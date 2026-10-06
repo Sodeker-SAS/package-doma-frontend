@@ -32,6 +32,7 @@
    carga sus datos, o al abrir un modal), lo de la derecha de la barra no
    salta. La barra de scroll se pinta encima de su borde derecho. */
 [data-doma-layout] #page-topbar {
+    top: var(--doma-announcement-height);
     right: auto;
     left: 0 !important;
     width: 100vw;
@@ -59,10 +60,15 @@ html[data-doma-layout] .page-content {
     padding-bottom: 1.5rem;
 }
 
+/* Con el aviso del sistema arriba de la barra, el contenido baja su alto. */
+html[data-doma-layout][data-doma-announcement] .page-content {
+    padding-top: calc(var(--doma-layout-top) + 1.5rem);
+}
+
 /* ---------- Menú lateral ---------- */
 
 [data-doma-layout] .navbar-menu.doma-app-menu {
-    top: var(--doma-navbar-height);
+    top: var(--doma-layout-top);
     border-right: none;
     box-shadow: none;
 }
@@ -77,7 +83,7 @@ html[data-doma-layout] .page-content {
 [data-doma-layout] .navbar-menu.doma-app-menu::before {
     content: '';
     position: fixed;
-    top: var(--doma-navbar-height);
+    top: var(--doma-layout-top);
     bottom: 0;
     left: calc(var(--vz-vertical-menu-width) - 1px);
     z-index: 1021;
@@ -106,8 +112,8 @@ html[data-doma-layout] .page-content {
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        height: calc(100vh - var(--doma-navbar-height));
-        max-height: calc(100vh - var(--doma-navbar-height));
+        height: calc(100vh - var(--doma-layout-top));
+        max-height: calc(100vh - var(--doma-layout-top));
         padding-bottom: 0 !important;
     }
 
@@ -139,7 +145,7 @@ html[data-doma-layout] .page-content {
 
     [data-doma-layout][data-sidebar-size="sm"] .navbar-menu.doma-app-menu {
         position: fixed !important;
-        top: var(--doma-navbar-height) !important;
+        top: var(--doma-layout-top) !important;
         bottom: 0 !important;
         left: 0 !important;
         padding-top: 0 !important;
@@ -199,7 +205,7 @@ html[data-doma-layout] .page-content {
    modal 1055): con esos quedaba encima de barras fijas y desplegables. */
 [data-doma-layout] .doma-sidebar-toggle {
     position: fixed;
-    top: var(--doma-navbar-height);
+    top: var(--doma-layout-top);
     left: var(--vz-vertical-menu-width);
     z-index: 1022;
     display: inline-flex;
