@@ -6,6 +6,8 @@
  */
 export { default as DomaNavBar } from './components/DomaNavBar.vue';
 export { default as DomaMenuHeader } from './components/DomaMenuHeader.vue';
+export { default as DomaAnnouncement } from './components/DomaAnnouncement.vue';
+export { default as DomaAnnouncementDetail } from './components/DomaAnnouncementDetail.vue';
 
 export { useDismiss } from './composables/useDismiss.js';
 

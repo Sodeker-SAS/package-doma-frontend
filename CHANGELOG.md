@@ -3,6 +3,30 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.0] - 2026-10-06
+
+### Añadido
+
+- Centro Novedades en `DomaNavBar`: botón con el megáfono a la izquierda de Configuración, con
+  las novedades del sistema (`announcements`, filtradas por producto con `apps`; "Aplica el…" y
+  ícono amarillo si son `critical`; todas abren su detalle), "Gestionar"
+  para quien las administra (`manage-url`) y el slot `novelties-menu`. Un punto rojo, en el botón
+  y en el ícono de cada una, avisa las novedades sin ver (`seen`), que se listan primero; al abrir una novedad
+  el Centro Novedades emite `announcements-seen` para que la app lo registre en Suite. Sale en todas
+  las apps al actualizar; `novelties-center` en `false` lo oculta. Para llenarlo, cada app pasa
+  `tenantContext.noveltiesCenter` (lo manda Suite).
+- `DomaAnnouncementDetail`: el detalle de una novedad, paso a paso, con comparación antes y
+  ahora, reproducción automática con barra de progreso, pasos numerados y botón principal.
+- `DomaAnnouncement`: aviso del sistema a todo el ancho que abre ese detalle. Se recuerda
+  cerrado en el navegador hasta que cambie el mensaje. Tokens `--doma-announcement-height` y
+  `--doma-layout-top` en el layout, y `--doma-warning-*` y `--doma-backdrop`.
+
+### Cambiado
+
+- Rótulos sin conectores: "Cambiar empresa" en el selector de empresa.
+- Colores de producto (`moduleColor`): el primario que usa hoy cada app, en un solo mapa, para
+  cambiarlos rápido cuando se definan los definitivos. Agrega `suite` y `kargo`.
+
 ## [0.2.0] - 2026-09-30
 
 ### Añadido
