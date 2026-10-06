@@ -49,6 +49,8 @@ la sesión de la app: recibe los datos por props y avisa las acciones por evento
     :home-url="homeUrl"           <!-- "Inicio" del lanzador (hub de Suite) -->
     :config-url="configUrl"       <!-- "Configuración": botón en la barra y en el lanzador -->
     :config-active="false"        <!-- resalta ese botón cuando se está en la configuración -->
+    :novelties-center="true"           <!-- botón Centro Novedades (?), a la izquierda de Configuración -->
+    :announcements="novedades"    <!-- novedades del Centro Novedades (ver abajo) -->
     :tenant="{ id, name, caption }"
     :tenants="empresas"           <!-- [{ id, name, caption? }]: con más de una aparece el selector -->
     :tenant-switchable="true"     <!-- p. ej. solo en vistas de listado -->
@@ -61,14 +63,19 @@ la sesión de la app: recibe los datos por props y avisa las acciones por evento
     @logout="…"
     @toggle-menu="…"
     @toggle-theme="…"
+    @open-announcement="(novedad) => …"
 >
+    <template #novelties-menu="{ close }">
+        <!-- enlaces del Centro Novedades (manuales, guías…); usar la clase doma-navbar__menu-item -->
+    </template>
     <template #user-menu="{ close }">
         <!-- ítems extra del menú del usuario; usar la clase doma-navbar__menu-item -->
     </template>
 </DomaNavBar>
 ```
 
-Slots: `start` (junto al selector de empresa), `actions` (antes del usuario) y `user-menu`.
+Slots: `start` (junto al selector de empresa), `actions` (antes del usuario), `novelties-menu` y
+`user-menu`.
 Los íconos son de Remix Icon (`ri-*`), que carga cada app. El color de cada módulo sale de
 `moduleColor(slug)` si no se pasa `color`.
 
@@ -84,6 +91,71 @@ ancho del menú lateral de Velzon) para que la línea separadora caiga sobre el 
 
 En Suite va dentro de `#page-topbar` (`resources/js/Components/SuiteNavBar.vue`).
 
+#### Centro Novedades
+
+El botón con el megáfono, a la izquierda de Configuración, abre el Centro Novedades: el lugar
+para anunciar las actualizaciones de DOMA. Sale siempre (`novelties-center` en `false` lo oculta) y
+tiene dos partes:
+
+- **Novedades** (`announcements`): primero las que el usuario no ha abierto y luego las vistas,
+  cada grupo de la más reciente a la más antigua; sin novedades dice
+  "Sin novedades.". De cada una solo se ve el ícono, el título (dos líneas como máximo) y
+  "Aplica el {date}"; el ícono va en amarillo si es `critical`. Todas se abren en su detalle
+  (resumen, pasos y botón), tengan pasos o no. Cada barra muestra
+  solo las de su producto: las que traen su slug (`current-module`) en `apps` y las que no
+  traen `apps`. Con `manage-url` (solo para quien puede administrarlas) aparece "Gestionar".
+- Lo que la app pase por el slot `novelties-menu`.
+
+En DOMA todo eso lo manda Suite: las novedades se crean y publican en su pantalla Novedades DOMA
+(módulo `SystemNovelties`, solo roles privilegiados) y llegan a su barra en
+`tenantContext.noveltiesCenter` y a las apps hijas en el contexto de navegación (`novelties_center`), que
+cada hija comparte igual en `tenantContext.noveltiesCenter`:
+
+```vue
+<DomaNavBar
+    :announcements="noveltiesCenter.announcements ?? []"
+    :manage-url="noveltiesCenter.manage_url ?? ''"
+    @announcements-seen="(ids) => window.axios.post(rutaQueAvisaASuite, { ids })"
+    …
+/>
+```
+
+Cada novedad (la arma Suite):
+
+```js
+{
+    id: '01K6TQ0M3Y8E2V5N7R4B9C1D2F', // uuid de la novedad
+    title: 'Nueva barra superior y menú lateral', // máximo 60 caracteres (Suite)
+    summary: 'Ahora cambias de empresa y de producto desde la barra superior…',
+    date: '2026-10-15',           // cuándo aplica (AAAA-MM-DD): "Aplica el 15 de octubre de 2026"
+    icon: 'ri-layout-top-2-line', // por defecto, un megáfono
+    critical: false,              // true: el ícono en amarillo (p. ej. un mantenimiento)
+    apps: ['sat'],                // productos donde sale; vacío: en todos
+    steps: [{                     // abren el detalle (DomaAnnouncementDetail)
+        label: 'Empresa',         // el chip del paso
+        title: 'Tu empresa, siempre a la vista',
+        text: 'Arriba ves el nombre y el NIT de la empresa activa…',
+        media: { src: 'https://…/storage/system-novelties/…gif', type: 'image' }, // o 'video'
+        before: { src: '…', type: 'image' }, // opcional: captura de antes, para comparar
+        seconds: 6,               // tiempo del paso en la reproducción automática
+    }],
+    action: { label: 'Ver ahora', url: '/t/develop/…' }, // opcional: botón principal del detalle
+    seen: false,                  // el usuario ya la vio (lo guarda Suite)
+}
+```
+
+- **Vistas:** una novedad queda vista solo cuando el usuario la abre, no al abrir el Centro
+  Novedades. Mientras quede alguna sin abrir (`seen: false`), el botón conserva el punto rojo, y
+  cada una sin abrir lleva el mismo punto en su ícono y un fondo suave. Al abrirla, la barra emite
+  `announcements-seen` con su id y la app se lo pasa a Suite (`POST /novelties-center/seen` en
+  Suite, `POST /sso/novelties-center-seen` en las hijas, que reenvían a
+  `POST /api/v1/novelties-center/seen`). La lectura es del usuario: vista en una app, vista en
+  todas.
+- Sin pasos, el detalle muestra la fecha, el resumen y el botón: sirve para avisos rápidos
+  como un mantenimiento.
+- Los medios los sirve Suite (disco `public`, `system-novelties/`): el paquete no trae medios.
+- Los rótulos van directos, sin conectores: "Centro Novedades", no "Centro de ayuda".
+
 ### `DomaMenuHeader`
 
 Encabezado del menú lateral: dónde está parado el usuario, sobre fondo gris. En Suite es
@@ -97,6 +169,48 @@ Encabezado del menú lateral: dónde está parado el usuario, sobre fondo gris. 
     :collapsed="menuColapsado"
 />
 ```
+
+### `DomaAnnouncement`
+
+Aviso del sistema: una barra a todo el ancho con un mensaje, el enlace "Más información" y el
+botón de cerrar. El enlace abre el detalle (`DomaAnnouncementDetail`) con sus pasos. Para avisos
+que deben verse sin buscarlos; las novedades van en el Centro Novedades de la barra.
+
+```vue
+<DomaAnnouncement
+    id="mantenimiento-2026-10"
+    :message="aviso.message"
+    detail-title="Mantenimiento programado"
+    :steps="[{ title: 'Qué pasa', text: '…', media: { src: '…/aviso.jpg', type: 'image' } }]"
+/>
+```
+
+- Con `placement="top"` (por defecto) va fija arriba de la barra DOMA y empuja la barra, el menú
+  lateral y el contenido: pone `data-doma-announcement` en `<html>` y su alto en
+  `--doma-announcement-height`, que usa `styles/layout.css` (`--doma-layout-top`). Con
+  `placement="inline"` ocupa su lugar en la página.
+- Al cerrarlo, el navegador lo recuerda (`localStorage`, clave `doma:announcement:{id}`) hasta que
+  se borren los datos del sitio. Si cambia el mensaje, vuelve a salir.
+- Sin mensaje no se muestra; sin pasos no hay enlace.
+- `variant`: `info` (el primario de la app, por defecto) o `warning`.
+
+### `DomaAnnouncementDetail`
+
+El detalle de una novedad, con el patrón de los modales de Suite: encabezado con el título
+(y el punto rojo si el usuario no la había visto, `is-new`), el resumen, y un escenario con el medio de cada paso. Si el paso trae
+`before`, el escenario compara antes y ahora con un divisor que se arrastra (o con las flechas
+del teclado sobre él). Debajo, la barra de progreso, los pasos numerados y la explicación del
+paso; al pie, Repetir, Pausar, Entendido y el botón principal (`action`).
+
+```vue
+<DomaAnnouncementDetail :open="abierto" :announcement="novedad" is-new @close="abierto = false" />
+```
+
+- Los pasos avanzan solos según sus `seconds` (6 por defecto) y se detienen en el último;
+  arrastrar el divisor pausa. Con "reducir movimiento" del sistema, empieza en pausa.
+- El escenario es 16:9 y nunca más alto de lo que deja libre el resto del modal: completo cabe
+  en una pantalla de portátil. Los medios se ajustan sin recortarse.
+- Se cierra con Escape, la X, un clic fuera o Entendido; las flechas pasan de un paso a otro.
 
 ### Tooltip
 
@@ -165,7 +279,9 @@ La app ya no define estos estilos en su `custom.scss` ni en su `menu.vue`.
 
 ### Utilidades
 
-- `moduleColor(slug)`: color de identidad de cada módulo; el mismo en todas las apps.
+- `moduleColor(slug)`: color de identidad de cada producto; el mismo en el login, el hub de Suite
+  y el lanzador de todas las apps. Hoy es el primario de cada app y es provisional: los colores
+  están juntos en `utils/moduleColors.js` para cambiarlos en un solo lugar.
 - `useDismiss(ancla, cerrar)`: cierra un menú al hacer clic fuera o presionar Escape.
 - `holdDomaLayout()` / `releaseDomaLayout()` y `DOMA_LAYOUT_ATTR`: ponen y quitan el atributo
   del layout. Al cambiar de módulo, Inertia monta el layout nuevo antes de desmontar el anterior;

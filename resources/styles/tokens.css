@@ -30,6 +30,13 @@
     --doma-muted: var(--vz-secondary-color, #878a99);
 
     --doma-danger: var(--vz-danger, #f06548);
+    --doma-warning: var(--vz-warning, #f7b84b);
+    --doma-warning-soft: var(--vz-warning-bg-subtle, #fef4e4);
+    --doma-warning-border: var(--vz-warning-border-subtle, #fce3b7);
+    --doma-warning-ink: var(--vz-warning-text-emphasis, #634a1e);
+
+    /* Fondo detrás de un modal. */
+    --doma-backdrop: rgba(var(--vz-dark-rgb, 33, 37, 41), 0.6);
 
     /* Texto sobre el primario (ítem activo del menú, avatar, tooltip). */
     --doma-on-primary: var(--vz-white, #fff);
@@ -45,6 +52,11 @@
     --doma-radius: var(--vz-border-radius, 0.25rem);
     --doma-radius-lg: var(--vz-border-radius-lg, 0.3rem);
     --doma-navbar-height: 70px;
+    /* Alto del aviso del sistema arriba de la barra (DomaAnnouncement); 0 sin
+       aviso. Lo pone el componente mientras se ve. */
+    --doma-announcement-height: 0px;
+    /* Dónde empieza lo que va debajo de la barra (menú lateral, contenido). */
+    --doma-layout-top: calc(var(--doma-navbar-height) + var(--doma-announcement-height));
     /* Ancho del bloque marca + lanzador: el del menú lateral de la app, para
        que la línea separadora caiga sobre su borde. */
     --doma-navbar-brand-width: var(--vz-vertical-menu-width, 250px);

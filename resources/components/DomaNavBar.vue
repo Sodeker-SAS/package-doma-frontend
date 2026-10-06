@@ -1,7 +1,15 @@
+<script>
+// Novedades que el usuario abrió en esta página (todas las barras). El servidor
+// es la fuente (`seen` de cada novedad), pero tarda una petición en enterarse:
+// esto evita que vuelva a salir como nueva si el layout se monta antes.
+const seenHere = new Set();
+</script>
+
 <script setup>
 import { computed, ref } from 'vue';
 import { useDismiss } from '../composables/useDismiss.js';
 import { moduleColor } from '../utils/moduleColors.js';
+import DomaAnnouncementDetail from './DomaAnnouncementDetail.vue';
 
 /**
  * Barra de navegación superior de DOMA, la misma en Suite y en cada app hija.
@@ -25,6 +33,26 @@ const props = defineProps({
     configUrl: { type: String, default: '' },
     /** Se está en Configuración DOMA: resalta su botón. */
     configActive: { type: Boolean, default: false },
+    /**
+     * Botón Centro Novedades, a la izquierda de Configuración: muestra las
+     * novedades (`announcements`) y lo que la app pase por el slot `novelties-menu`.
+     */
+    noveltiesCenter: { type: Boolean, default: true },
+    /**
+     * Lo que muestra el Centro Novedades, de la más reciente a la más antigua:
+     * [{ id, title, summary?, date?, icon?, critical?, apps?, steps?, action?, seen? }].
+     * En DOMA llegan de Suite (pantalla Novedades DOMA), en el contexto de
+     * navegación.
+     * Todas abren su detalle (DomaAnnouncementDetail): resumen, pasos y botón.
+     * `date` (AAAA-MM-DD) se lee "Aplica el…"; `critical` pone el ícono en
+     * amarillo. `apps`:
+     * slugs de los productos donde se muestra (vacío: en todos); se compara con
+     * `currentModule`. `seen`: el usuario ya la vio (lo registra el servidor
+     * cuando la app atiende `announcements-seen`).
+     */
+    announcements: { type: Array, default: () => [] },
+    /** Enlace a la pantalla Novedades DOMA, solo para quien puede administrarlas. */
+    manageUrl: { type: String, default: '' },
     /** Empresa actual: { id, name, caption? }. `caption` va bajo el nombre (p. ej. el NIT). */
     tenant: { type: Object, default: null },
     /** Empresas a las que se puede cambiar: [{ id, name, caption? }]. */
@@ -43,12 +71,13 @@ const props = defineProps({
     theme: { type: String, default: null },
 });
 
-const emit = defineEmits(['toggle-menu', 'select-tenant', 'logout', 'toggle-theme']);
+const emit = defineEmits(['toggle-menu', 'select-tenant', 'logout', 'toggle-theme', 'open-announcement', 'announcements-seen']);
 
 const openMenu = ref(null);
-const anchors = { launcher: ref(null), tenant: ref(null), user: ref(null) };
+const anchors = { launcher: ref(null), tenant: ref(null), novelties: ref(null), user: ref(null) };
 const launcherRef = anchors.launcher;
 const tenantRef = anchors.tenant;
+const noveltiesRef = anchors.novelties;
 const userRef = anchors.user;
 
 const closeMenus = () => {
@@ -125,6 +154,75 @@ function selectTenant(tenant) {
 function logout() {
     closeMenus();
     emit('logout');
+}
+
+// ---------- Centro Novedades ----------
+
+// Cambia cada vez que el usuario abre una novedad (seenHere no es reactivo).
+const seenNow = ref(0);
+
+// Solo las de este producto: sin `apps`, la novedad es para todos.
+const appliesHere = (item) => !Array.isArray(item.apps) || item.apps.length === 0 || item.apps.includes(props.currentModule);
+
+// Una novedad queda vista solo cuando el usuario la abre, no al abrir el
+// Centro Novedades: mientras quede alguna sin abrir, el botón conserva el punto
+// rojo y cada una lo lleva en su ícono.
+const isUnseen = (item) => seenNow.value >= 0 && !item.seen && !seenHere.has(item.id);
+
+// Todas se abren en su detalle, tengan pasos o no: ahí está el resumen. Primero
+// las que el usuario no ha abierto; dentro de cada grupo, en el orden en que
+// llegan (la más reciente primero).
+const news = computed(() => props.announcements
+    .filter((item) => item?.id != null && item.title && appliesHere(item))
+    .map((item) => ({ ...item, id: String(item.id) }))
+    .sort((a, b) => Number(isUnseen(b)) - Number(isUnseen(a))));
+
+const hasUnseen = computed(() => news.value.some(isUnseen));
+
+function toggleNovelties() {
+    toggleMenu('novelties');
+}
+
+const noveltiesButton = ref(null);
+const detail = ref(null);
+// La que se abrió era nueva: el detalle lleva la marca "Nuevo".
+const detailIsNew = ref(false);
+
+// Abrirla la marca vista: la app lo registra en el servidor
+// (`announcements-seen`) y deja de salir pendiente en todo DOMA.
+function openAnnouncement(item) {
+    closeMenus();
+    emit('open-announcement', item);
+
+    detailIsNew.value = isUnseen(item);
+    detail.value = item;
+
+    if (detailIsNew.value) {
+        seenHere.add(item.id);
+        seenNow.value += 1;
+        emit('announcements-seen', [item.id]);
+    }
+}
+
+// El ítem que abrió el detalle ya no existe (el menú se cerró): el foco vuelve
+// al botón Centro Novedades.
+function closeAnnouncement() {
+    detail.value = null;
+    noveltiesButton.value?.focus();
+}
+
+const DATE_FORMAT = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+
+function isoDate(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? value : null;
+}
+
+function formatDate(value) {
+    if (!isoDate(value)) return value;
+
+    const [year, month, day] = value.split('-').map(Number);
+
+    return DATE_FORMAT.format(new Date(year, month - 1, day));
 }
 </script>
 
@@ -231,7 +329,7 @@ function logout() {
 
                 <div v-if="openMenu === 'tenant'" class="doma-navbar__menu doma-navbar__menu--tenant">
                     <div class="doma-navbar__menu-header">
-                        <strong>Cambiar de empresa</strong>
+                        <strong>Cambiar empresa</strong>
                         <small>Cada empresa trabaja con su propia información.</small>
                     </div>
                     <ul class="doma-navbar__list" role="listbox">
@@ -272,6 +370,71 @@ function logout() {
             >
                 <i :class="theme === 'dark' ? 'ri-sun-line' : 'ri-moon-line'"></i>
             </button>
+
+            <div v-if="noveltiesCenter" ref="noveltiesRef" class="doma-navbar__anchor">
+                <button
+                    ref="noveltiesButton"
+                    type="button"
+                    class="doma-navbar__icon-btn"
+                    :class="{ 'is-open': openMenu === 'novelties' }"
+                    data-doma-tooltip="Centro Novedades"
+                    :aria-label="hasUnseen ? 'Centro Novedades, pendientes por ver' : 'Centro Novedades'"
+                    aria-haspopup="true"
+                    :aria-expanded="String(openMenu === 'novelties')"
+                    @click="toggleNovelties"
+                >
+                    <i class="ri-megaphone-line" aria-hidden="true"></i>
+                    <span v-if="hasUnseen" class="doma-navbar__dot" aria-hidden="true"></span>
+                </button>
+
+                <div v-if="openMenu === 'novelties'" class="doma-navbar__menu doma-navbar__menu--end doma-navbar__menu--novelties">
+                    <div class="doma-navbar__menu-header">
+                        <strong>Centro Novedades</strong>
+                        <small>Actualizaciones DOMA</small>
+                    </div>
+
+                    <p class="doma-navbar__menu-label">
+                        Novedades
+                        <a v-if="manageUrl" :href="manageUrl" class="doma-navbar__menu-label-link">
+                            <i class="ri-edit-2-line" aria-hidden="true"></i>
+                            Gestionar
+                        </a>
+                    </p>
+
+                    <ul v-if="news.length" class="doma-navbar__list">
+                        <li v-for="item in news" :key="item.id">
+                            <button
+                                type="button"
+                                class="doma-navbar__news"
+                                :class="{ 'is-unseen': isUnseen(item) }"
+                                @click="openAnnouncement(item)"
+                            >
+                                <span class="doma-navbar__news-icon" :class="{ 'is-critical': item.critical }">
+                                    <i :class="item.icon || 'ri-megaphone-line'" aria-hidden="true"></i>
+                                    <span v-if="isUnseen(item)" class="doma-navbar__dot" aria-hidden="true"></span>
+                                </span>
+                                <span class="doma-navbar__news-text">
+                                    <strong>{{ item.title }}</strong>
+                                    <span v-if="isUnseen(item)" class="doma-navbar__sr-only">Pendiente por ver.</span>
+                                    <time v-if="item.date" :datetime="isoDate(item.date)">
+                                        Aplica el {{ formatDate(item.date) }}
+                                    </time>
+                                </span>
+                                <i class="ri-arrow-right-s-line doma-navbar__news-go" aria-hidden="true"></i>
+                            </button>
+                        </li>
+                    </ul>
+
+                    <p v-else class="doma-navbar__empty">
+                        <i class="ri-inbox-line" aria-hidden="true"></i>
+                        Sin novedades.
+                    </p>
+
+                    <div v-if="$slots['novelties-menu']" class="doma-navbar__menu-section">
+                        <slot name="novelties-menu" :close="closeMenus" />
+                    </div>
+                </div>
+            </div>
 
             <a
                 v-if="configUrl"
@@ -329,6 +492,13 @@ function logout() {
                 </div>
             </template>
         </div>
+
+        <DomaAnnouncementDetail
+            :open="Boolean(detail)"
+            :announcement="detail"
+            :is-new="detailIsNew"
+            @close="closeAnnouncement"
+        />
     </nav>
 </template>
 
@@ -855,6 +1025,170 @@ a.doma-navbar__module:hover {
     color: var(--doma-primary);
 }
 
+/* ---------- Centro Novedades ---------- */
+
+/* Hay novedades sin ver: como una notificación. */
+.doma-navbar__dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--doma-danger);
+    box-shadow: 0 0 0 2px var(--doma-surface);
+}
+
+.doma-navbar__menu--novelties {
+    width: 360px;
+    max-width: calc(100vw - 24px);
+}
+
+.doma-navbar__menu-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0;
+    padding: 6px 10px 4px;
+    color: var(--doma-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* Para quien administra las novedades (rol privilegiado). */
+.doma-navbar__menu-label-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--doma-primary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-decoration: none;
+    text-transform: none;
+}
+
+.doma-navbar__menu-label-link:hover {
+    color: var(--doma-primary);
+    text-decoration: underline;
+}
+
+.doma-navbar__news {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: var(--doma-radius);
+    background: transparent;
+    color: var(--doma-text);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+/* Sin abrir: un fondo suave, además del punto rojo en el ícono. */
+.doma-navbar__news.is-unseen {
+    background: rgba(var(--doma-primary-rgb), 0.06);
+}
+
+.doma-navbar__news:hover {
+    background: var(--doma-surface-muted);
+    color: var(--doma-text);
+}
+
+.doma-navbar__news:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--doma-primary-rgb), 0.25);
+}
+
+.doma-navbar__news-icon {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--doma-radius);
+    background: var(--doma-primary-soft);
+    color: var(--doma-primary-ink);
+    font-size: 16px;
+}
+
+/* Novedad crítica (p. ej. un mantenimiento): el ícono en amarillo. */
+.doma-navbar__news-icon.is-critical {
+    background: var(--doma-warning-soft);
+    color: var(--doma-warning);
+}
+
+.doma-navbar__news-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    line-height: 1.35;
+}
+
+.doma-navbar__news-text strong {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--doma-heading);
+    font-size: 13.5px;
+    font-weight: 600;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.doma-navbar__news-text time {
+    color: var(--doma-muted);
+    font-size: 11.5px;
+}
+
+/* El punto rojo no se lee: los lectores de pantalla reciben este texto. */
+.doma-navbar__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.doma-navbar__news-go {
+    flex: none;
+    align-self: center;
+    color: var(--doma-muted);
+    font-size: 18px;
+}
+
+.doma-navbar__empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 10px 12px;
+    color: var(--doma-muted);
+    font-size: 13px;
+}
+
+.doma-navbar__empty i {
+    font-size: 18px;
+}
+
+/* Lo que la app agrega por el slot `novelties-menu` (manuales, guías...). */
+.doma-navbar__menu-section {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--doma-border);
+}
+
 [data-bs-theme="dark"] .doma-navbar__module {
     --module-ink: color-mix(in srgb, var(--module) 70%, var(--vz-white, #fff));
 }
@@ -886,6 +1220,16 @@ a.doma-navbar__module:hover {
 
     .doma-navbar__menu--launcher {
         width: min(380px, calc(100vw - 24px));
+    }
+
+    /* El botón no queda al borde: el menú se ancla a la ventana para no salirse. */
+    .doma-navbar__menu--novelties {
+        position: fixed;
+        top: calc(var(--doma-layout-top) + 6px);
+        right: 12px;
+        left: 12px;
+        width: auto;
+        max-width: none;
     }
 }
 </style>
