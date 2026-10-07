@@ -6,6 +6,7 @@
  */
 export { default as DomaNavBar } from './components/DomaNavBar.vue';
 export { default as DomaMenuHeader } from './components/DomaMenuHeader.vue';
+export { default as DomaMenuSearch } from './components/DomaMenuSearch.vue';
 export { default as DomaAnnouncement } from './components/DomaAnnouncement.vue';
 export { default as DomaAnnouncementDetail } from './components/DomaAnnouncementDetail.vue';
 
