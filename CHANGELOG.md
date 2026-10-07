@@ -3,6 +3,16 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.1] - 2026-10-07
+
+### Añadido
+
+- `DomaMenuSearch`: búsqueda de módulos del menú lateral, fija debajo de `DomaMenuHeader`. Busca
+  por el nombre del módulo, sin tildes, solo entre los que el menú le muestra al usuario (lee lo
+  que el menú pintó, así respeta permisos y apps contratadas). Con el menú colapsado, una lupa la
+  abre en un panel flotante. **Acción en la app:** ponerla en el layout vertical, entre
+  `DomaMenuHeader` y `#scrollbar`, con `:collapsed` como el encabezado.
+
 ## [0.3.0] - 2026-10-06
 
 ### Añadido
