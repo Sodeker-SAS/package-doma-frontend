@@ -170,6 +170,30 @@ Encabezado del menú lateral: dónde está parado el usuario, sobre fondo gris. 
 />
 ```
 
+### `DomaMenuSearch`
+
+Búsqueda de módulos del menú lateral. Va justo debajo de `DomaMenuHeader` y arriba de la lista
+de módulos (`#scrollbar`), fija como el encabezado. Por ahora busca solo por el nombre del
+módulo, sin tildes ni mayúsculas, y resalta lo que coincide; debajo de cada resultado va el grupo
+del menú que lo contiene.
+
+```vue
+<DomaMenuHeader … />
+<DomaMenuSearch :collapsed="menuColapsado" />
+<simplebar id="scrollbar">…</simplebar>
+```
+
+- **Solo lo que el usuario ve.** No recibe la lista de módulos: lee los enlaces que el menú de la
+  app pintó en `#navbar-nav` (prop `target`). Lo que el menú deja por fuera, por permisos, por
+  las apps contratadas del tenant o por cualquier otra regla, tampoco sale en la búsqueda.
+- **Abre igual que el menú.** Elegir un resultado hace clic en su enlace del menú: navega con
+  Inertia o como lo haga ese enlace, y en celular cierra el menú. Con Ctrl, ⌘ o el botón del
+  medio se abre en otra pestaña.
+- **Teclado.** Flechas para moverse, Enter abre el marcado, Escape borra lo escrito.
+- Mientras hay texto, los resultados toman el lugar de la lista (la clase
+  `doma-app-menu--searching` oculta `#scrollbar`). Con el menú colapsado queda la lupa, que abre
+  la búsqueda en un panel flotante junto al menú.
+
 ### `DomaAnnouncement`
 
 Aviso del sistema: una barra a todo el ancho con un mensaje, el enlace "Más información" y el
@@ -270,7 +294,7 @@ flotante); el aspecto y la mecánica del layout vienen del paquete:
 | Marcado en la app | Para qué |
 |---|---|
 | `<html data-doma-layout>` | Activa el layout. Ponerlo antes de montar Vue (en `app.blade.php`, para que el menú no salte al cargar) y mantenerlo desde el layout vertical: `holdDomaLayout()` al crearlo y `releaseDomaLayout()` al desmontarlo, nunca con `setAttribute`/`removeAttribute` directos |
-| `<div class="app-menu navbar-menu doma-app-menu">` | El menú lateral; `DomaMenuHeader` va como primer hijo |
+| `<div class="app-menu navbar-menu doma-app-menu">` | El menú lateral; `DomaMenuHeader` va como primer hijo y `DomaMenuSearch` después |
 | `<button class="doma-sidebar-toggle">` | Botón de colapsar el menú |
 | `.doma-menu-flyout`, `-title`, `-list`, `-link` | Panel flotante del menú colapsado, teletransportado a `<body>` |
 | `v-doma-tooltip:right` en los ítems sin sub-ítems | Su nombre con el menú colapsado; con el menú expandido, texto vacío |

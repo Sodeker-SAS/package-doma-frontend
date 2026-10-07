@@ -78,6 +78,12 @@ html[data-doma-layout][data-doma-announcement] .page-content {
     flex: 0 0 auto;
 }
 
+/* Búsqueda de módulos (DomaMenuSearch), fija debajo del encabezado. Mientras
+   hay texto, sus resultados toman el lugar de la lista del menú. */
+[data-doma-layout] .doma-app-menu.doma-app-menu--searching #scrollbar {
+    display: none !important;
+}
+
 /* Borde derecho continuo, por encima del botón de colapsar y sin que el ícono
    lo corte. */
 [data-doma-layout] .navbar-menu.doma-app-menu::before {
