@@ -1,5 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import DomaMediaViewer from './DomaMediaViewer.vue';
+import DomaVideoPlayer from './DomaVideoPlayer.vue';
 
 /**
  * Detalle de una novedad DOMA: el modal que muestra qué cambió, paso a paso.
@@ -8,10 +10,18 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
  *
  *     <DomaAnnouncementDetail :open="abierto" :announcement="novedad" is-new @close="abierto = false" />
  *
- * Cada paso tiene su medio (imagen, GIF o video) y, si trae `before`, la
- * captura de antes: el escenario la compara con la de ahora con un divisor que
- * se arrastra. Los pasos avanzan solos (barra de progreso), se pueden pausar,
- * repetir o elegir; las flechas del teclado pasan de uno a otro.
+ * Ocupa el 64 % del ancho y el 88 % del alto de la ventana (toda en un
+ * celular). Arriba, el título y la fecha de aplicación. En el cuerpo, la
+ * barra de progreso de los pasos y el medio del paso llenan todo el alto
+ * visible; debajo, a los que se llega desplazándose, el resumen y los pasos.
+ *
+ * Cada paso tiene su medio: una imagen o un GIF, que se puede comparar con la
+ * captura de antes (`before`) con un divisor que se arrastra, o un video, que
+ * va solo (sin antes), se maneja con sus controles y no se repite: el paso
+ * dura lo que dura el video. Los pasos avanzan solos, se pueden pausar,
+ * repetir o elegir; las flechas del teclado pasan de uno a otro. El botón
+ * "Pantalla completa" del escenario, o el doble clic sobre él, abre el medio en
+ * el visor (DomaMediaViewer).
  */
 const props = defineProps({
     open: { type: Boolean, default: false },
@@ -25,6 +35,11 @@ const props = defineProps({
     isNew: { type: Boolean, default: false },
     /** Los pasos avanzan solos. */
     autoplay: { type: Boolean, default: true },
+    /**
+     * Novedades que se muestran una tras otra (las invasivas al entrar):
+     * { position, total }. Con más de una, el encabezado dice "1 de 3".
+     */
+    queue: { type: Object, default: null },
 });
 
 const emit = defineEmits(['close']);
@@ -35,10 +50,13 @@ const REVEAL_DURATION = 1200;
 const REVEAL_TARGET = 50;
 
 const dialog = ref(null);
+const body = ref(null);
 const stage = ref(null);
+const player = ref(null);
 const titleId = `doma-novelty-title-${Math.random().toString(36).slice(2, 8)}`;
 
 const visible = computed(() => props.open && Boolean(props.announcement));
+const queueLabel = computed(() => (props.queue?.total > 1 ? `${props.queue.position} de ${props.queue.total}` : ''));
 const steps = computed(() => (Array.isArray(props.announcement?.steps) ? props.announcement.steps : []));
 const action = computed(() => (props.announcement?.action?.url ? props.announcement.action : null));
 
@@ -51,12 +69,24 @@ const appliesOn = computed(() => {
 });
 
 const index = ref(0);
+// Cambia cada vez que se entra a un paso: el medio se crea de nuevo y un video
+// arranca desde el principio, aunque sea el mismo paso (Repetir).
+const run = ref(0);
 const step = computed(() => steps.value[index.value] ?? null);
 const isLast = computed(() => index.value >= steps.value.length - 1);
 
 function isVideo(media) {
     return media?.type === 'video' || /\.(mp4|webm|ogv)(\?|$)/i.test(media?.src ?? '');
 }
+
+const isVideoStep = computed(() => isVideo(step.value?.media));
+
+// Antes y ahora se comparan solo entre imágenes: un paso con video va solo.
+function hasCompare(item) {
+    return Boolean(item?.before?.src) && !isVideo(item.media) && !isVideo(item.before);
+}
+
+const compare = computed(() => hasCompare(step.value));
 
 // ---------- Antes y ahora ----------
 
@@ -78,7 +108,7 @@ function stopReveal() {
 function startReveal() {
     stopReveal();
 
-    if (!step.value?.before) {
+    if (!compare.value) {
         reveal.value = 100;
         return;
     }
@@ -112,7 +142,7 @@ function revealAt(clientX) {
 }
 
 function onPointerDown(event) {
-    if (!step.value?.before) return;
+    if (!compare.value || event.target.closest?.('.doma-novelty__expand')) return;
 
     stopReveal();
     dragging.value = true;
@@ -141,20 +171,46 @@ function onKnobKeydown(event) {
 
 // ---------- Avance de los pasos ----------
 
+// Pausa de toda la novedad: detiene el reloj de los pasos y el video.
 const paused = ref(false);
 const elapsed = ref(0);
+// Un paso con video avanza con el video, no con el reloj.
+const videoProgress = ref(0);
+const videoEnded = ref(false);
+// El video arranca en silencio; si el usuario activa el sonido o cambia la
+// velocidad, los siguientes videos lo conservan.
+const videoMuted = ref(true);
+const videoRate = ref(1);
+// Segundo en el que arranca el video del paso (al volver del visor).
+const videoStartAt = ref(0);
 let frame = null;
 let lastTick = 0;
 
 const duration = computed(() => Math.max(1, Number(step.value?.seconds) || DEFAULT_SECONDS) * 1000);
-const progress = computed(() => Math.min(100, (elapsed.value / duration.value) * 100));
-const finished = computed(() => isLast.value && elapsed.value >= duration.value);
+const progress = computed(() => (isVideoStep.value
+    ? videoProgress.value * 100
+    : Math.min(100, (elapsed.value / duration.value) * 100)));
+const finished = computed(() => isLast.value && (isVideoStep.value ? videoEnded.value : elapsed.value >= duration.value));
+
+// Relleno de cada tramo de la barra: los pasos vistos llenos, el actual según
+// lo que lleva y los que siguen vacíos.
+function segmentFill(position) {
+    if (position < index.value) return 100;
+    if (position > index.value) return 0;
+
+    return progress.value;
+}
 
 function tick(now) {
     frame = window.requestAnimationFrame(tick);
 
     const delta = lastTick ? now - lastTick : 0;
     lastTick = now;
+
+    if (isVideoStep.value) {
+        videoProgress.value = player.value?.progress() ?? 0;
+        return;
+    }
 
     if (paused.value || dragging.value || finished.value) return;
 
@@ -184,7 +240,11 @@ function go(position) {
     if (position < 0 || position >= steps.value.length) return;
 
     index.value = position;
+    run.value += 1;
     elapsed.value = 0;
+    videoProgress.value = 0;
+    videoEnded.value = false;
+    videoStartAt.value = 0;
     startReveal();
 }
 
@@ -210,11 +270,92 @@ function togglePause() {
     paused.value = !paused.value;
 }
 
+// El video sigue la pausa de la novedad (Pausar, Reanudar, abrir el visor)...
+watch(paused, (value) => {
+    if (!isVideoStep.value) return;
+
+    if (value) player.value?.pause();
+    else player.value?.play();
+}, { flush: 'post' });
+
+// ...y la novedad, los controles del video.
+function onVideoPlay() {
+    paused.value = false;
+    videoEnded.value = false;
+}
+
+function onVideoPause() {
+    paused.value = true;
+}
+
+// El paso de un video termina cuando termina el video.
+function onVideoEnded() {
+    if (isLast.value) videoEnded.value = true;
+    else go(index.value + 1);
+}
+
+// ---------- Pantalla completa ----------
+
+// Los pasos que tienen medio, en el formato del visor. El video del paso que
+// se ve arranca en el segundo en el que va.
+const viewerFrom = ref({ position: -1, time: 0 });
+const viewerItems = computed(() => steps.value
+    .map((item, position) => ({
+        position,
+        title: item.title,
+        media: item.media,
+        before: hasCompare(item) ? item.before : null,
+        startAt: position === viewerFrom.value.position ? viewerFrom.value.time : 0,
+    }))
+    .filter((item) => item.media?.src));
+const viewerOpen = ref(false);
+const viewerIndex = ref(0);
+
+// Abrir el visor pausa la novedad; al volver, sigue en pausa hasta que el
+// usuario pulse "Reanudar".
+function openViewer() {
+    const position = viewerItems.value.findIndex((item) => item.position === index.value);
+    if (position === -1) return;
+
+    stopReveal();
+    viewerFrom.value = { position: index.value, time: isVideoStep.value ? player.value?.time() ?? 0 : 0 };
+    paused.value = true;
+    viewerIndex.value = position;
+    viewerOpen.value = true;
+}
+
+// El doble clic sobre los controles del video no abre el visor.
+function onStageDblclick(event) {
+    if (event.target.closest?.('button, input, select, label')) return;
+
+    openViewer();
+}
+
+// Al cerrar, el detalle queda en el paso que se estaba viendo en el visor y,
+// si es un video, en el segundo en el que iba.
+function closeViewer(state) {
+    viewerOpen.value = false;
+    const target = viewerItems.value[viewerIndex.value]?.position;
+    if (target === undefined) return;
+
+    const time = Number(state?.time) || 0;
+
+    if (target !== index.value) {
+        go(target);
+        videoStartAt.value = time;
+    } else if (isVideoStep.value) {
+        player.value?.seekTo(time);
+    }
+}
+
 // ---------- Abrir y cerrar ----------
 
 let opener = null;
 let previousOverflow = '';
 let active = false;
+// Solo cierra el clic que empieza y termina fuera del modal: soltar fuera un
+// arrastre (el divisor, la línea de tiempo) no lo cierra.
+let pressedOutside = false;
 
 function reducedMotion() {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -224,10 +365,34 @@ function close() {
     emit('close');
 }
 
+function onBackdropPointerDown(event) {
+    pressedOutside = event.target === event.currentTarget;
+}
+
+function onBackdropClick(event) {
+    if (pressedOutside && event.target === event.currentTarget) close();
+    pressedOutside = false;
+}
+
 function onKeydown(event) {
-    if (event.key === 'Escape') close();
-    else if (event.key === 'ArrowRight') next();
-    else if (event.key === 'ArrowLeft') prev();
+    // Con el visor abierto, el teclado es suyo (Esc lo cierra solo a él).
+    if (viewerOpen.value) return;
+
+    const key = event.key;
+    // Los campos (la línea de tiempo, el volumen, la velocidad) manejan sus
+    // propias flechas.
+    const onField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target?.tagName);
+
+    if (key === 'Escape') close();
+    else if (key.startsWith('Arrow') && onField) return;
+    else if (key === 'ArrowRight') next();
+    else if (key === 'ArrowLeft') prev();
+    else if (isVideoStep.value) player.value?.handleKey(event, { arrows: false });
+}
+
+function resetVideo() {
+    videoMuted.value = true;
+    videoRate.value = 1;
 }
 
 async function activate() {
@@ -238,6 +403,7 @@ async function activate() {
     document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', onKeydown);
 
+    resetVideo();
     paused.value = !props.autoplay || reducedMotion();
     go(0);
     startClock();
@@ -249,6 +415,7 @@ async function activate() {
 function deactivate() {
     if (!active) return;
     active = false;
+    viewerOpen.value = false;
     stopClock();
     stopReveal();
     document.body.style.overflow = previousOverflow;
@@ -264,15 +431,33 @@ function deactivate() {
 
 watch(visible, (isVisible) => (isVisible ? activate() : deactivate()), { immediate: true });
 
+// Pasa a otra novedad sin cerrarse (la siguiente de la cola): arranca desde su
+// primer paso, arriba.
+watch(() => props.announcement, (value, previous) => {
+    if (!visible.value || value === previous) return;
+
+    viewerOpen.value = false;
+    paused.value = !props.autoplay || reducedMotion();
+    go(0);
+    body.value?.scrollTo?.(0, 0);
+    dialog.value?.focus();
+});
+
 onBeforeUnmount(deactivate);
 </script>
 
 <template>
     <Teleport to="body">
-        <div v-if="visible" class="doma-novelty" @click.self="close">
+        <div
+            v-if="visible"
+            class="doma-novelty"
+            @pointerdown="onBackdropPointerDown"
+            @click="onBackdropClick"
+        >
             <div
                 ref="dialog"
                 class="doma-novelty__dialog"
+                :class="{ 'has-stage': step }"
                 role="dialog"
                 aria-modal="true"
                 :aria-labelledby="titleId"
@@ -282,81 +467,95 @@ onBeforeUnmount(deactivate);
                     <h2 :id="titleId" class="doma-novelty__title">
                         <span v-if="isNew" class="doma-novelty__dot" aria-hidden="true"></span>
                         <span v-if="isNew" class="doma-novelty__sr-only">Sin ver.</span>
-                        {{ announcement.title }}
+                        <span>{{ announcement.title }}</span>
+                        <span v-if="appliesOn" class="doma-novelty__applies">– Aplica el {{ appliesOn }}</span>
+                        <span v-if="queueLabel" class="doma-novelty__count">{{ queueLabel }}</span>
                     </h2>
                     <button type="button" class="doma-novelty__close" aria-label="Cerrar" @click="close">
                         <i class="ri-close-line" aria-hidden="true"></i>
                     </button>
                 </header>
 
-                <div class="doma-novelty__body">
-                    <p v-if="appliesOn" class="doma-novelty__meta">
-                        <i class="ri-calendar-event-line" aria-hidden="true"></i>
-                        Aplica el {{ appliesOn }}
-                    </p>
-                    <p v-if="announcement.summary" class="doma-novelty__intro">{{ announcement.summary }}</p>
+                <div ref="body" class="doma-novelty__body">
+                    <div v-if="step" class="doma-novelty__screen">
+                        <div class="doma-novelty__progress" aria-hidden="true">
+                            <span v-for="(item, position) in steps" :key="position">
+                                <i :style="{ width: `${segmentFill(position)}%` }"></i>
+                            </span>
+                        </div>
 
-                    <template v-if="step">
                         <div
                             ref="stage"
                             class="doma-novelty__stage"
-                            :class="{ 'is-compare': step.before, 'is-dragging': dragging }"
+                            :class="{ 'is-compare': compare, 'is-dragging': dragging, 'is-video': isVideoStep }"
                             :style="{ '--doma-novelty-reveal': `${reveal}%` }"
                             @pointerdown="onPointerDown"
                             @pointermove="onPointerMove"
                             @pointerup="onPointerUp"
                             @pointercancel="onPointerUp"
+                            @dblclick="onStageDblclick"
                         >
-                            <div v-if="step.before" class="doma-novelty__layer">
-                                <video
-                                    v-if="isVideo(step.before)"
-                                    :key="`antes-${index}`"
-                                    :src="step.before.src"
-                                    autoplay
-                                    muted
-                                    loop
-                                    playsinline
-                                ></video>
-                                <img v-else :key="`antes-${index}`" :src="step.before.src" alt="" draggable="false" />
-                            </div>
+                            <DomaVideoPlayer
+                                v-if="isVideoStep"
+                                ref="player"
+                                :key="`video-${run}`"
+                                :src="step.media.src"
+                                :autoplay="!paused"
+                                :start-at="videoStartAt"
+                                v-model:muted="videoMuted"
+                                v-model:rate="videoRate"
+                                overlay
+                                class="doma-novelty__video"
+                                @play="onVideoPlay"
+                                @pause="onVideoPause"
+                                @ended="onVideoEnded"
+                            />
 
-                            <div class="doma-novelty__layer is-now">
-                                <video
-                                    v-if="isVideo(step.media)"
-                                    :key="`ahora-${index}`"
-                                    :src="step.media.src"
-                                    autoplay
-                                    muted
-                                    loop
-                                    playsinline
-                                ></video>
-                                <img v-else :key="`ahora-${index}`" :src="step.media?.src" :alt="step.title" draggable="false" />
-                            </div>
-
-                            <template v-if="step.before">
-                                <div class="doma-novelty__divider">
-                                    <span
-                                        class="doma-novelty__knob"
-                                        role="slider"
-                                        tabindex="0"
-                                        aria-label="Comparar antes y ahora"
-                                        aria-valuemin="0"
-                                        aria-valuemax="100"
-                                        :aria-valuenow="Math.round(reveal)"
-                                        @keydown="onKnobKeydown"
-                                    >
-                                        <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
-                                    </span>
+                            <template v-else>
+                                <div v-if="compare" class="doma-novelty__layer">
+                                    <img :key="`antes-${run}`" :src="step.before.src" alt="" draggable="false" />
                                 </div>
-                                <span class="doma-novelty__tag is-now">Ahora</span>
-                                <span class="doma-novelty__tag is-before">Antes</span>
+
+                                <div class="doma-novelty__layer is-now">
+                                    <img :key="`ahora-${run}`" :src="step.media?.src" :alt="step.title" draggable="false" />
+                                </div>
+
+                                <template v-if="compare">
+                                    <div class="doma-novelty__divider">
+                                        <span
+                                            class="doma-novelty__knob"
+                                            role="slider"
+                                            tabindex="0"
+                                            aria-label="Comparar antes y ahora"
+                                            aria-valuemin="0"
+                                            aria-valuemax="100"
+                                            :aria-valuenow="Math.round(reveal)"
+                                            @keydown="onKnobKeydown"
+                                        >
+                                            <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
+                                        </span>
+                                    </div>
+                                    <span class="doma-novelty__tag is-now">Ahora</span>
+                                    <span class="doma-novelty__tag is-before">Antes</span>
+                                </template>
                             </template>
-                        </div>
 
-                        <div class="doma-novelty__progress" aria-hidden="true">
-                            <i :style="{ width: `${progress}%` }"></i>
+                            <button
+                                v-if="step.media?.src"
+                                type="button"
+                                class="doma-novelty__expand"
+                                title="Pantalla completa"
+                                @click="openViewer"
+                            >
+                                <i class="ri-fullscreen-line" aria-hidden="true"></i>
+                                <span>Pantalla completa</span>
+                            </button>
                         </div>
+                    </div>
 
+                    <p v-if="announcement.summary" class="doma-novelty__intro">{{ announcement.summary }}</p>
+
+                    <template v-if="step">
                         <div v-if="steps.length > 1" class="doma-novelty__chips" role="tablist" aria-label="Pasos">
                             <button
                                 v-for="(item, position) in steps"
@@ -402,41 +601,67 @@ onBeforeUnmount(deactivate);
             </div>
         </div>
     </Teleport>
+
+    <DomaMediaViewer
+        v-model:index="viewerIndex"
+        :open="visible && viewerOpen"
+        :items="viewerItems"
+        @close="closeViewer"
+    />
 </template>
 
 <style scoped>
-/* Patrón de los modales de Suite (Bootstrap y Velzon) con los tokens de DOMA. */
+/* Centrado sobre el fondo oscuro, al 64 % del ancho y el 88 % del alto de la
+   ventana: con esa proporción, un medio 16:9 llena casi todo el escenario.
+   Con los tokens de DOMA: encabezado arriba, pie abajo y, en medio, el
+   contenido, que se desplaza solo si no cabe. Sin pasos (solo texto), el alto
+   se ajusta al contenido. El tamaño se puede cambiar con --doma-novelty-width
+   y --doma-novelty-height. */
 .doma-novelty {
     position: fixed;
     inset: 0;
     z-index: 1060;
-    overflow-y: auto;
-    padding: 1.75rem 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
     background: var(--doma-backdrop);
     font-family: var(--doma-font);
     animation: domaNoveltyFade 0.15s ease-out;
 }
 
 .doma-novelty__dialog {
-    max-width: 1140px;
-    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    width: var(--doma-novelty-width, 64vw);
+    min-width: min(720px, 100%);
+    max-width: 100%;
+    max-height: 100%;
     overflow: hidden;
     border-radius: var(--doma-radius-lg);
     background: var(--doma-surface);
-    box-shadow: var(--doma-shadow-menu);
     color: var(--doma-text);
     font-size: 0.875rem;
     line-height: 1.5;
+    box-shadow: var(--doma-shadow-menu);
     outline: none;
-    animation: domaNoveltyIn 0.3s ease-out;
+    animation: domaNoveltyIn 0.25s ease-out;
+}
+
+/* Con pasos, alto fijo: el medio crece hasta llenar lo que queda libre. */
+.doma-novelty__dialog.has-stage {
+    height: var(--doma-novelty-height, 88vh);
+    min-height: min(560px, 100%);
 }
 
 .doma-novelty__header {
     display: flex;
+    flex: none;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--doma-border);
     background: var(--doma-surface-muted);
 }
 
@@ -444,12 +669,31 @@ onBeforeUnmount(deactivate);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.25rem 0.5rem;
     margin: 0;
     color: var(--doma-heading);
     font-size: 1.09375rem;
     font-weight: 600;
     line-height: 1.5;
+}
+
+/* "– Aplica el 12 de noviembre de 2026", junto al título. */
+.doma-novelty__applies {
+    color: var(--doma-muted);
+    font-size: 0.9375rem;
+    font-weight: 400;
+}
+
+/* Posición en la cola de novedades que se abren una tras otra: "1 de 3". */
+.doma-novelty__count {
+    padding: 0.25em 0.6em;
+    border-radius: var(--doma-radius);
+    background: var(--doma-primary-soft);
+    color: var(--doma-primary-ink);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 /* Sin ver: el mismo punto rojo del Centro Novedades. */
@@ -491,49 +735,91 @@ onBeforeUnmount(deactivate);
 }
 
 .doma-novelty__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
     padding: 1.25rem;
 }
 
-.doma-novelty__meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0 0 0.5rem;
-    color: var(--doma-heading);
-    font-weight: 500;
+.doma-novelty__body > * {
+    flex: none;
 }
 
-.doma-novelty__meta i {
-    color: var(--doma-muted);
-    font-size: 16px;
-}
-
+/* Resumen de la novedad, debajo del medio. */
 .doma-novelty__intro {
     max-width: 80ch;
-    margin: 0 0 1rem;
+    margin: 0;
     color: var(--doma-muted);
     white-space: pre-line;
 }
 
-.doma-novelty__intro:last-child {
-    margin-bottom: 0;
+.doma-novelty__screen + .doma-novelty__intro {
+    margin-top: 1rem;
+}
+
+/* ---------- Progreso de los pasos ---------- */
+
+/* Un tramo por paso, arriba del medio: los vistos llenos, el actual según lo
+   que lleva (o lo que lleva el video) y los que siguen vacíos. */
+.doma-novelty__progress {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0.75rem;
+}
+
+.doma-novelty__progress span {
+    flex: 1;
+    height: 5px;
+    overflow: hidden;
+    border-radius: var(--doma-radius);
+    background: var(--doma-primary-soft);
+}
+
+.doma-novelty__progress i {
+    display: block;
+    height: 100%;
+    background: var(--doma-primary);
 }
 
 /* ---------- Escenario ---------- */
 
-/* 16:9, pero sin pasar del alto que deja libre el resto del modal (unos
-   420 px): el modal completo cabe en pantallas de portátil sin desplazarse. */
+/* El medio es lo que más espacio ocupa: la barra y el escenario llenan todo
+   el alto visible del cuerpo, y la imagen o el video se ajustan a él sin
+   recortarse. El resumen y los pasos quedan debajo; el cuerpo se desplaza
+   hasta ellos. En una pantalla baja no se achica de 260 px. */
+.doma-novelty__screen {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 260px;
+}
+
+.doma-novelty__screen > .doma-novelty__stage {
+    flex: 1 1 0;
+}
+
 .doma-novelty__stage {
     position: relative;
     width: 100%;
-    aspect-ratio: 16 / 9;
-    max-height: max(220px, calc(100vh - 420px));
+    min-height: 0;
     overflow: hidden;
     border: 1px solid var(--doma-border);
     border-radius: var(--doma-radius-lg);
     background: var(--doma-surface-muted);
     user-select: none;
     touch-action: pan-y;
+}
+
+.doma-novelty__stage.is-video {
+    border-color: transparent;
+    background: var(--doma-viewer-bg);
+}
+
+.doma-novelty__video {
+    position: absolute;
+    inset: 0;
 }
 
 .doma-novelty__stage.is-compare {
@@ -545,8 +831,7 @@ onBeforeUnmount(deactivate);
     inset: 0;
 }
 
-.doma-novelty__layer img,
-.doma-novelty__layer video {
+.doma-novelty__layer img {
     display: block;
     width: 100%;
     height: 100%;
@@ -587,6 +872,36 @@ onBeforeUnmount(deactivate);
     cursor: ew-resize;
 }
 
+/* Abre el medio en el visor a pantalla completa. */
+.doma-novelty__expand {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.625rem;
+    border: 0;
+    border-radius: var(--doma-radius);
+    background: var(--doma-backdrop);
+    color: var(--doma-on-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    opacity: 0.85;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.doma-novelty__expand i {
+    font-size: 16px;
+}
+
+.doma-novelty__expand:hover {
+    opacity: 1;
+}
+
 .doma-novelty__tag {
     position: absolute;
     bottom: 12px;
@@ -607,20 +922,6 @@ onBeforeUnmount(deactivate);
 .doma-novelty__tag.is-before {
     right: 12px;
     background: #212529;
-}
-
-.doma-novelty__progress {
-    height: 4px;
-    margin-top: 0.5rem;
-    overflow: hidden;
-    border-radius: var(--doma-radius);
-    background: var(--doma-surface-muted);
-}
-
-.doma-novelty__progress i {
-    display: block;
-    height: 100%;
-    background: var(--doma-primary);
 }
 
 /* ---------- Pasos ---------- */
@@ -705,10 +1006,12 @@ onBeforeUnmount(deactivate);
 
 .doma-novelty__footer {
     display: flex;
+    flex: none;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-    padding: 0 1.25rem 1.25rem;
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid var(--doma-border);
 }
 
 .doma-novelty__grow {
@@ -771,7 +1074,8 @@ onBeforeUnmount(deactivate);
 .doma-novelty__close:focus-visible,
 .doma-novelty__btn:focus-visible,
 .doma-novelty__chip:focus-visible,
-.doma-novelty__knob:focus-visible {
+.doma-novelty__knob:focus-visible,
+.doma-novelty__expand:focus-visible {
     outline: 2px solid var(--doma-primary);
     outline-offset: 2px;
 }
@@ -785,7 +1089,7 @@ onBeforeUnmount(deactivate);
 @keyframes domaNoveltyIn {
     from {
         opacity: 0;
-        transform: translate(0, -50px);
+        transform: scale(0.985);
     }
 }
 
@@ -796,17 +1100,39 @@ onBeforeUnmount(deactivate);
     }
 }
 
-@media (max-width: 640px) {
+/* En un celular o una tableta angosta ocupa toda la pantalla. */
+@media (max-width: 768px) {
     .doma-novelty {
-        padding-block: 0.5rem;
+        padding: 0;
     }
 
+    .doma-novelty__dialog,
+    .doma-novelty__dialog.has-stage {
+        width: 100vw;
+        min-width: 0;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        border-radius: 0;
+    }
+}
+
+@media (max-width: 640px) {
+    .doma-novelty__header,
     .doma-novelty__body {
         padding: 1rem;
     }
 
     .doma-novelty__footer {
-        padding: 0 1rem 1rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .doma-novelty__screen {
+        min-height: 220px;
+    }
+
+    .doma-novelty__expand span {
+        display: none;
     }
 
     .doma-novelty__grow {
