@@ -3,6 +3,46 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.2] - 2026-11-12
+
+### Añadido
+
+- `DomaMediaViewer`: visor multimedia a pantalla completa. Video con `DomaVideoPlayer`
+  (reproducir, ±10 s, línea de tiempo, velocidad, volumen, imagen en imagen y atajos de teclado),
+  desde el segundo `startAt`; al cerrar, `close` lleva el segundo en el que iba;
+  imagen con zoom (rueda, pellizco, botones, doble clic), arrastre, tamaño real y original;
+  selector "Ahora | Antes" y paso a paso. Tokens `--doma-viewer-*`.
+- Novedades invasivas en `DomaNavBar` (`invasive`, `publishedAt` y `releasedAt` de cada
+  novedad, y la prop `session-started-at`): las que el usuario no ha visto y llegaron antes de su
+  sesión se abren solas al entrar, una tras otra en orden de publicación; las que llegan con la
+  sesión abierta salen en una barra arriba de la barra DOMA.
+- `refresh-announcements` y `refresh-seconds` en `DomaNavBar`: la barra vuelve a pedir las
+  novedades cada 3 minutos, con la pestaña visible, sin recargar la página.
+- `DomaVideoPlayer`: reproductor de video con controles propios (los del visor), sobre el video
+  (`overlay`) o en una barra debajo. No se repite; `v-model:muted`, `v-model:rate`, `start-at` y
+  `handleKey(event)` para el teclado.
+- `DomaAnnouncementDetail`: `queue` ("1 de 3") y el botón "Pantalla completa" del escenario (o
+  doble clic), que abre el visor.
+- `DomaAnnouncement`: `remember` (cerrarlo solo en esta pantalla) y `opens-detail` (el enlace solo
+  emite `open-detail`). Si aparece o se va con la página abierta, el layout se mueve con una
+  transición (`data-doma-announcement-motion`).
+
+### Cambiado
+
+- `DomaAnnouncementDetail` ocupa el 64 % del ancho y el 88 % del alto de la ventana (toda en un
+  celular): la fecha de aplicación pasa al encabezado ("Título – Aplica el…"); la barra de
+  progreso (un tramo por paso)
+  y el medio llenan el alto visible del cuerpo, y debajo van el resumen y los pasos. Un clic fuera
+  lo cierra solo si empieza y termina fuera (soltar fuera un arrastre no lo cierra).
+- Un paso con video va solo (no muestra `before`), se maneja con sus controles, arranca en
+  silencio y ya no se repite: el paso dura lo que dura el video y, al terminar, pasa al siguiente.
+  Antes y ahora se comparan solo entre imágenes.
+
+**Acción en la app:** ninguna para seguir como antes; las props nuevas son opcionales. Para las
+invasivas, pasar a `DomaNavBar` `session-started-at` (inicio de la sesión del navegador) y
+`refresh-announcements` (una ruta propia que pida las novedades a Suite y no cuente como actividad
+de la sesión). En DOMA lo traen Suite y las hijas en `tenantContext.noveltiesCenter`.
+
 ## [0.3.1] - 2026-10-07
 
 ### Añadido
