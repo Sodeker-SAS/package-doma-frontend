@@ -1,14 +1,25 @@
 <script>
-// Novedades que el usuario abrió en esta página (todas las barras). El servidor
-// es la fuente (`seen` de cada novedad), pero tarda una petición en enterarse:
-// esto evita que vuelva a salir como nueva si el layout se monta antes.
+// Compartido por todas las barras mientras no se recargue la página: al
+// cambiar de página, Inertia monta un layout nuevo (con su barra).
+
+// Novedades que el usuario abrió en esta página. El servidor es la fuente
+// (`seen` de cada novedad), pero tarda una petición en enterarse: esto evita
+// que vuelva a salir como nueva si el layout se monta antes.
 const seenHere = new Set();
+
+// Invasivas que ya se abrieron solas: la barra del layout nuevo no las repite.
+const shownHere = new Set();
+
+// Última consulta de novedades, de cualquier barra: cambiar de página no
+// adelanta la siguiente.
+let lastRefreshAt = 0;
 </script>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDismiss } from '../composables/useDismiss.js';
 import { moduleColor } from '../utils/moduleColors.js';
+import DomaAnnouncement from './DomaAnnouncement.vue';
 import DomaAnnouncementDetail from './DomaAnnouncementDetail.vue';
 
 /**
@@ -40,7 +51,8 @@ const props = defineProps({
     noveltiesCenter: { type: Boolean, default: true },
     /**
      * Lo que muestra el Centro Novedades, de la más reciente a la más antigua:
-     * [{ id, title, summary?, date?, icon?, critical?, apps?, steps?, action?, seen? }].
+     * [{ id, title, summary?, date?, icon?, critical?, apps?, steps?, action?, seen?,
+     *   invasive?, publishedAt?, releasedAt? }].
      * En DOMA llegan de Suite (pantalla Novedades DOMA), en el contexto de
      * navegación.
      * Todas abren su detalle (DomaAnnouncementDetail): resumen, pasos y botón.
@@ -49,8 +61,30 @@ const props = defineProps({
      * slugs de los productos donde se muestra (vacío: en todos); se compara con
      * `currentModule`. `seen`: el usuario ya la vio (lo registra el servidor
      * cuando la app atiende `announcements-seen`).
+     *
+     * `invasive`: si el usuario no la ha visto, no espera a que la busque. Si
+     * llegó (`releasedAt`, ISO 8601) antes de que empezara su sesión
+     * (`sessionStartedAt`), se abre sola al entrar, una tras otra en orden de
+     * publicación (`publishedAt`). Si llegó con la sesión abierta, sale una
+     * barra arriba de la barra DOMA, para no abrirle nada encima mientras
+     * trabaja.
      */
     announcements: { type: Array, default: () => [] },
+    /**
+     * Cuándo empezó la sesión de este navegador (ISO 8601). Decide si una
+     * invasiva se abre sola (llegó antes) o sale en la barra (llegó después).
+     * Sin el dato, se abre sola.
+     */
+    sessionStartedAt: { type: String, default: '' },
+    /**
+     * Consulta las novedades sin recargar la página: función que devuelve una
+     * promesa con la lista (o con { announcements }). La barra la llama cada
+     * `refreshSeconds`, solo con la pestaña visible, y al volver a ella. Debe
+     * pedirlas al servidor de la propia app y no contar como actividad de la
+     * sesión. Si falla, no pasa nada: queda lo que había.
+     */
+    refreshAnnouncements: { type: Function, default: null },
+    refreshSeconds: { type: Number, default: 180 },
     /** Enlace a la pantalla Novedades DOMA, solo para quien puede administrarlas. */
     manageUrl: { type: String, default: '' },
     /** Empresa actual: { id, name, caption? }. `caption` va bajo el nombre (p. ej. el NIT). */
@@ -161,6 +195,14 @@ function logout() {
 // Cambia cada vez que el usuario abre una novedad (seenHere no es reactivo).
 const seenNow = ref(0);
 
+// Lo último que trajo la consulta; mientras no llegue, lo que mandó la página.
+const refreshed = ref(null);
+const source = computed(() => refreshed.value ?? props.announcements);
+
+watch(() => props.announcements, () => {
+    refreshed.value = null;
+});
+
 // Solo las de este producto: sin `apps`, la novedad es para todos.
 const appliesHere = (item) => !Array.isArray(item.apps) || item.apps.length === 0 || item.apps.includes(props.currentModule);
 
@@ -172,7 +214,7 @@ const isUnseen = (item) => seenNow.value >= 0 && !item.seen && !seenHere.has(ite
 // Todas se abren en su detalle, tengan pasos o no: ahí está el resumen. Primero
 // las que el usuario no ha abierto; dentro de cada grupo, en el orden en que
 // llegan (la más reciente primero).
-const news = computed(() => props.announcements
+const news = computed(() => source.value
     .filter((item) => item?.id != null && item.title && appliesHere(item))
     .map((item) => ({ ...item, id: String(item.id) }))
     .sort((a, b) => Number(isUnseen(b)) - Number(isUnseen(a))));
@@ -189,9 +231,11 @@ const detail = ref(null);
 const detailIsNew = ref(false);
 
 // Abrirla la marca vista: la app lo registra en el servidor
-// (`announcements-seen`) y deja de salir pendiente en todo DOMA.
-function openAnnouncement(item) {
+// (`announcements-seen`) y deja de salir pendiente en todo DOMA. Abrirla desde
+// el Centro Novedades deja la cola de invasivas.
+function openAnnouncement(item, fromQueue = false) {
     closeMenus();
+    if (!fromQueue) queue.value = [];
     emit('open-announcement', item);
 
     detailIsNew.value = isUnseen(item);
@@ -204,12 +248,149 @@ function openAnnouncement(item) {
     }
 }
 
-// El ítem que abrió el detalle ya no existe (el menú se cerró): el foco vuelve
-// al botón Centro Novedades.
+// Cerrar una de la cola abre la siguiente. Si no, el ítem que abrió el detalle
+// ya no existe (el menú se cerró): el foco vuelve al botón Centro Novedades.
 function closeAnnouncement() {
+    if (queuePosition.value < queue.value.length - 1) {
+        queuePosition.value += 1;
+        showQueued();
+        return;
+    }
+
+    const fromQueue = queue.value.length > 0;
+    queue.value = [];
     detail.value = null;
-    noveltiesButton.value?.focus();
+
+    if (!fromQueue) noveltiesButton.value?.focus();
 }
+
+// ---------- Novedades invasivas ----------
+
+const sessionStart = computed(() => {
+    const time = Date.parse(props.sessionStartedAt || '');
+
+    return Number.isNaN(time) ? null : time;
+});
+
+// Llegó antes de que empezara la sesión de este navegador: se abre sola. Sin
+// alguna de las dos fechas, también.
+function arrivedBeforeSession(item) {
+    const released = Date.parse(item.releasedAt || item.publishedAt || '');
+
+    return sessionStart.value === null || Number.isNaN(released) || released <= sessionStart.value;
+}
+
+const publishedTime = (item) => Date.parse(item.publishedAt || '') || 0;
+const byPublication = (a, b) => publishedTime(a) - publishedTime(b) || a.id.localeCompare(b.id);
+
+const pendingInvasive = computed(() => news.value.filter((item) => item.invasive && isUnseen(item)));
+
+// Las que llegaron con la sesión abierta: van a la barra de arriba.
+const barNews = computed(() => pendingInvasive.value.filter((item) => !arrivedBeforeSession(item)).sort(byPublication));
+
+const barMessage = computed(() => {
+    if (!props.noveltiesCenter || barNews.value.length === 0) return '';
+
+    return barNews.value.length === 1
+        ? `Nueva novedad: ${barNews.value[0].title}`
+        : `${barNews.value.length} novedades nuevas`;
+});
+
+const barLink = computed(() => (barNews.value.length === 1 ? 'Ver novedad' : 'Ver novedades'));
+const barVariant = computed(() => (barNews.value.some((item) => item.critical) ? 'warning' : 'info'));
+
+// Novedades que se abren una tras otra en el detalle: "1 de 3".
+const queue = ref([]);
+const queuePosition = ref(0);
+const queueInfo = computed(() => (queue.value.length > 1
+    ? { position: queuePosition.value + 1, total: queue.value.length }
+    : null));
+
+function showQueued() {
+    const item = queue.value[queuePosition.value];
+    shownHere.add(item.id);
+    openAnnouncement(item, true);
+}
+
+function startQueue(items) {
+    if (!items.length) return;
+
+    queue.value = items;
+    queuePosition.value = 0;
+    showQueued();
+}
+
+function openBarNews() {
+    startQueue([...barNews.value]);
+}
+
+// Al entrar: las invasivas sin ver que llegaron antes de la sesión, en orden
+// de publicación. Solo una vez por carga de página, aunque cambie el layout.
+function openPendingInvasive() {
+    if (!props.noveltiesCenter) return;
+
+    startQueue(pendingInvasive.value
+        .filter((item) => arrivedBeforeSession(item) && !shownHere.has(item.id))
+        .sort(byPublication));
+}
+
+// ---------- Consulta de novedades ----------
+
+// Cada cuánto se revisa si toca consultar; la consulta en sí va cada
+// `refreshSeconds`.
+const REFRESH_CHECK_MS = 30000;
+// Al volver a la pestaña se consulta si la última fue hace más de esto.
+const REFRESH_ON_RETURN_MS = 60000;
+
+let refreshTimer = null;
+let refreshing = false;
+
+const canRefresh = () => props.noveltiesCenter && typeof props.refreshAnnouncements === 'function';
+const pageVisible = () => document.visibilityState === 'visible';
+
+async function refresh() {
+    if (refreshing || !canRefresh()) return;
+
+    refreshing = true;
+    lastRefreshAt = Date.now();
+
+    try {
+        const result = await props.refreshAnnouncements();
+        const list = Array.isArray(result) ? result : result?.announcements;
+
+        if (Array.isArray(list)) refreshed.value = list;
+    } catch {
+        // Sin respuesta (red, servidor): queda lo que había, sin avisar.
+    } finally {
+        refreshing = false;
+    }
+}
+
+function refreshIfDue() {
+    if (pageVisible() && Date.now() - lastRefreshAt >= Math.max(30, props.refreshSeconds) * 1000) {
+        refresh();
+    }
+}
+
+function onVisibilityChange() {
+    if (pageVisible() && Date.now() - lastRefreshAt >= REFRESH_ON_RETURN_MS) refresh();
+}
+
+onMounted(() => {
+    openPendingInvasive();
+
+    if (!canRefresh()) return;
+
+    // La página trae las novedades al día: la primera consulta va después.
+    if (lastRefreshAt === 0) lastRefreshAt = Date.now();
+    refreshTimer = window.setInterval(refreshIfDue, REFRESH_CHECK_MS);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+});
+
+onBeforeUnmount(() => {
+    window.clearInterval(refreshTimer);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+});
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -497,8 +678,25 @@ function formatDate(value) {
             :open="Boolean(detail)"
             :announcement="detail"
             :is-new="detailIsNew"
+            :queue="queueInfo"
             @close="closeAnnouncement"
         />
+
+        <!-- Invasivas que llegaron con la sesión abierta. Fuera de la barra
+             (en <body>): va fija arriba de todo y empuja la barra hacia abajo.
+             La X la oculta solo en esta pantalla. -->
+        <Teleport to="body">
+            <DomaAnnouncement
+                id="doma-novelties-invasive"
+                :message="barMessage"
+                :link-label="barLink"
+                :variant="barVariant"
+                icon="ri-megaphone-line"
+                :remember="false"
+                :opens-detail="false"
+                @open-detail="openBarNews"
+            />
+        </Teleport>
     </nav>
 </template>
 

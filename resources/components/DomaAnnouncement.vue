@@ -21,6 +21,10 @@ import DomaAnnouncementDetail from './DomaAnnouncementDetail.vue';
  *
  * Al cerrarlo, el navegador lo recuerda (localStorage) y no vuelve a salir
  * hasta que se borren los datos del sitio. Si cambia el mensaje, sale de nuevo.
+ * Con `remember` en false, cerrarlo lo oculta solo en esta pantalla.
+ *
+ * Si aparece o se va con la página abierta, la barra DOMA, el menú lateral y el
+ * contenido bajan o suben con él, sin saltos.
  */
 const props = defineProps({
     /** Identifica el aviso; con él se recuerda que el usuario lo cerró. */
@@ -44,6 +48,16 @@ const props = defineProps({
     icon: { type: String, default: '' },
     /** Se puede cerrar. */
     dismissible: { type: Boolean, default: true },
+    /**
+     * Cerrarlo se recuerda en el navegador. En false, se oculta solo en esta
+     * pantalla: al pasar a otra o recargar, vuelve a salir.
+     */
+    remember: { type: Boolean, default: true },
+    /**
+     * El enlace abre el detalle con `steps`. En false, solo emite `open-detail`
+     * (la app decide qué abrir) y se muestra aunque no haya pasos.
+     */
+    opensDetail: { type: Boolean, default: true },
     /** 'top': fijo arriba de la barra DOMA; 'inline': en el flujo de la página. */
     placement: { type: String, default: 'top' },
 });
@@ -52,6 +66,8 @@ const emit = defineEmits(['dismiss', 'open-detail']);
 
 const STORAGE_PREFIX = 'doma:announcement:';
 const ANNOUNCEMENT_ATTR = 'data-doma-announcement';
+const MOTION_ATTR = 'data-doma-announcement-motion';
+const MOTION_MS = 400;
 const HEIGHT_VAR = '--doma-announcement-height';
 
 // Firma del aviso: si cambia el mensaje, el aviso cerrado vuelve a salir.
@@ -65,6 +81,8 @@ function signature(text) {
 }
 
 function readDismissed() {
+    if (!props.remember) return false;
+
     try {
         return window.localStorage.getItem(STORAGE_PREFIX + props.id) === signature(props.message);
     } catch {
@@ -73,6 +91,8 @@ function readDismissed() {
 }
 
 function rememberDismissed() {
+    if (!props.remember) return;
+
     try {
         window.localStorage.setItem(STORAGE_PREFIX + props.id, signature(props.message));
     } catch {
@@ -86,12 +106,36 @@ function rememberDismissed() {
 const dismissed = ref(readDismissed());
 const visible = computed(() => props.message.trim() !== '' && !dismissed.value);
 const iconClass = computed(() => props.icon || (props.variant === 'warning' ? 'ri-error-warning-line' : 'ri-information-line'));
+const hasLink = computed(() => (props.opensDetail ? props.steps.length > 0 : props.linkLabel.trim() !== ''));
+
+// Mensaje nuevo: si el usuario no cerró este, sale de nuevo.
+watch(() => props.message, () => {
+    dismissed.value = readDismissed();
+});
 
 // ---------- Lugar en el layout ----------
 
 const bar = ref(null);
 let resizeObserver = null;
 let holding = false;
+let mounted = false;
+let motionTimer = null;
+// Entra deslizándose cuando aparece con la página abierta, no al cargarla.
+const entering = ref(false);
+
+function reducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
+// Con la página abierta, el layout se mueve con una transición
+// (styles/layout.css) mientras dure el atributo.
+function animateLayout() {
+    if (!mounted || props.placement !== 'top' || reducedMotion()) return;
+
+    document.documentElement.setAttribute(MOTION_ATTR, '');
+    window.clearTimeout(motionTimer);
+    motionTimer = window.setTimeout(() => document.documentElement.removeAttribute(MOTION_ATTR), MOTION_MS);
+}
 
 function syncHeight() {
     if (bar.value) {
@@ -133,16 +177,20 @@ function release() {
 if (visible.value) hold();
 
 watch(visible, async (isVisible) => {
+    animateLayout();
+
     if (!isVisible) {
         release();
         return;
     }
+    entering.value = mounted && !reducedMotion();
     hold();
     await nextTick();
     observe();
 });
 
 onMounted(() => {
+    mounted = true;
     if (holding) observe();
 });
 
@@ -158,10 +206,12 @@ const detailOpen = ref(false);
 const detail = computed(() => ({ title: props.detailTitle, steps: props.steps, action: props.action }));
 
 function openDetail() {
-    detailOpen.value = true;
+    if (props.opensDetail) detailOpen.value = true;
     emit('open-detail');
 }
 
+// El temporizador de la transición sigue aunque se desmonte: es el que quita
+// el atributo del <html>.
 onUnmounted(release);
 </script>
 
@@ -170,14 +220,15 @@ onUnmounted(release);
         v-if="visible"
         ref="bar"
         class="doma-announcement"
-        :class="[`doma-announcement--${variant}`, `is-${placement}`]"
+        :class="[`doma-announcement--${variant}`, `is-${placement}`, { 'is-entering': entering }]"
         role="status"
+        @animationend="entering = false"
     >
         <p class="doma-announcement__text">
             <i class="doma-announcement__icon" :class="iconClass" aria-hidden="true"></i>
             <span>{{ message }}</span>
             <button
-                v-if="steps.length"
+                v-if="hasLink"
                 type="button"
                 class="doma-announcement__link"
                 @click="openDetail"
@@ -198,6 +249,7 @@ onUnmounted(release);
     </div>
 
     <DomaAnnouncementDetail
+        v-if="opensDetail"
         :open="detailOpen"
         :announcement="detail"
         @close="detailOpen = false"
@@ -237,6 +289,16 @@ onUnmounted(release);
     left: 0;
     z-index: 1024;
     width: 100vw;
+}
+
+.doma-announcement.is-top.is-entering {
+    animation: domaAnnouncementIn 0.25s ease-out;
+}
+
+@keyframes domaAnnouncementIn {
+    from {
+        transform: translateY(-100%);
+    }
 }
 
 .doma-announcement.is-inline {
