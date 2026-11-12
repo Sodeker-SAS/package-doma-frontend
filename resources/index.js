@@ -9,6 +9,8 @@ export { default as DomaMenuHeader } from './components/DomaMenuHeader.vue';
 export { default as DomaMenuSearch } from './components/DomaMenuSearch.vue';
 export { default as DomaAnnouncement } from './components/DomaAnnouncement.vue';
 export { default as DomaAnnouncementDetail } from './components/DomaAnnouncementDetail.vue';
+export { default as DomaMediaViewer } from './components/DomaMediaViewer.vue';
+export { default as DomaVideoPlayer } from './components/DomaVideoPlayer.vue';
 
 export { useDismiss } from './composables/useDismiss.js';
 
