@@ -3,6 +3,18 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.3] - 2026-11-13
+
+### Cambiado
+
+- Los videos de las novedades arrancan con sonido (`DomaAnnouncementDetail`). Si el navegador no
+  lo deja porque el usuario aún no ha tocado la página (una invasiva que se abre sola al entrar),
+  `DomaVideoPlayer` arranca en silencio y muestra el botón «Activar sonido» arriba a la izquierda
+  hasta que se active. Ese silencio no cuenta como elección del usuario: el siguiente video vuelve
+  a intentar con sonido.
+
+**Acción en la app:** ninguna.
+
 ## [0.3.2] - 2026-11-12
 
 ### Añadido

@@ -177,9 +177,10 @@ const elapsed = ref(0);
 // Un paso con video avanza con el video, no con el reloj.
 const videoProgress = ref(0);
 const videoEnded = ref(false);
-// El video arranca en silencio; si el usuario activa el sonido o cambia la
+// El video arranca con sonido (si el navegador no lo deja, el reproductor
+// arranca en silencio y avisa); si el usuario lo silencia o cambia la
 // velocidad, los siguientes videos lo conservan.
-const videoMuted = ref(true);
+const videoMuted = ref(false);
 const videoRate = ref(1);
 // Segundo en el que arranca el video del paso (al volver del visor).
 const videoStartAt = ref(0);
@@ -391,7 +392,7 @@ function onKeydown(event) {
 }
 
 function resetVideo() {
-    videoMuted.value = true;
+    videoMuted.value = false;
     videoRate.value = 1;
 }
 

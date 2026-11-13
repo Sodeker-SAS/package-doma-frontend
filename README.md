@@ -273,9 +273,11 @@ paso. Al pie, Repetir, Pausar, Entendido y el botón principal (`action`).
   ahora con un divisor que se arrastra (o con las flechas del teclado sobre él). El paso dura sus
   `seconds` (6 por defecto).
 - **Video:** va solo, sin antes (si trae `before`, no se muestra). Se maneja con los controles de
-  `DomaVideoPlayer` sobre el video, arranca en silencio y no se repite: el paso dura lo que dura
-  el video y, al terminar, pasa al siguiente. El sonido y la velocidad que el usuario elija se
-  conservan en los videos siguientes. Espacio, K, J, L, M, `<` y `>` funcionan como en el visor;
+  `DomaVideoPlayer` sobre el video, arranca con sonido y no se repite: el paso dura lo que dura
+  el video y, al terminar, pasa al siguiente. Si el navegador no deja arrancar con sonido (el
+  usuario aún no ha tocado la página, como en una invasiva que se abre sola), arranca en silencio
+  con el botón «Activar sonido». El silencio y la velocidad que el usuario elija se conservan en
+  los videos siguientes. Espacio, K, J, L, M, `<` y `>` funcionan como en el visor;
   las flechas siguen pasando de un paso a otro.
 - Los pasos avanzan solos y se detienen en el último; arrastrar el divisor o pausar el video
   pausa la novedad, y Pausar o Reanudar del pie también pausan o siguen el video. Con "reducir
@@ -324,7 +326,9 @@ novedad y el visor; cualquier pantalla puede usarlo:
 
 - No se repite: al terminar se queda en el último cuadro y emite `ended` (también `play` y
   `pause`; la pausa con la que el navegador termina un video no se emite).
-- `autoplay`: arranca al cargar; si el navegador no lo deja con sonido, arranca en silencio.
+- `autoplay`: arranca al cargar, con sonido; si el navegador no lo deja, arranca en silencio y
+  muestra «Activar sonido» arriba a la izquierda hasta que se active. Ese silencio no se emite
+  por `update:muted`: no es una elección del usuario.
   `start-at`: segundo en el que arranca. `v-model:muted` y `v-model:rate` dejan que quien lo usa
   conserve el sonido y la velocidad entre videos.
 - `overlay`: los controles van sobre el video, con un botón grande de reproducir en el centro
