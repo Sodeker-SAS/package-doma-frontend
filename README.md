@@ -115,6 +115,8 @@ cada hija comparte igual en `tenantContext.noveltiesCenter`:
 <DomaNavBar
     :announcements="noveltiesCenter.announcements ?? []"
     :manage-url="noveltiesCenter.manage_url ?? ''"
+    :session-started-at="noveltiesCenter.sessionStartedAt ?? ''"
+    :refresh-announcements="consultarNovedades"
     @announcements-seen="(ids) => window.axios.post(rutaQueAvisaASuite, { ids })"
     …
 />
@@ -130,14 +132,17 @@ Cada novedad (la arma Suite):
     date: '2026-10-15',           // cuándo aplica (AAAA-MM-DD): "Aplica el 15 de octubre de 2026"
     icon: 'ri-layout-top-2-line', // por defecto, un megáfono
     critical: false,              // true: el ícono en amarillo (p. ej. un mantenimiento)
+    invasive: false,              // true: se abre sola a quien no la ha visto (ver abajo)
+    publishedAt: '2026-10-01T00:00:00-05:00', // ISO 8601: orden de las invasivas
+    releasedAt: '2026-10-01T00:00:00-05:00',  // ISO 8601: cuándo le llegó a los usuarios
     apps: ['sat'],                // productos donde sale; vacío: en todos
     steps: [{                     // abren el detalle (DomaAnnouncementDetail)
         label: 'Empresa',         // el chip del paso
         title: 'Tu empresa, siempre a la vista',
         text: 'Arriba ves el nombre y el NIT de la empresa activa…',
         media: { src: 'https://…/storage/system-novelties/…gif', type: 'image' }, // o 'video'
-        before: { src: '…', type: 'image' }, // opcional: captura de antes, para comparar
-        seconds: 6,               // tiempo del paso en la reproducción automática
+        before: { src: '…', type: 'image' }, // opcional, solo con imagen: captura de antes, para comparar
+        seconds: 6,               // tiempo del paso en la reproducción automática (un video dura lo que dure)
     }],
     action: { label: 'Ver ahora', url: '/t/develop/…' }, // opcional: botón principal del detalle
     seen: false,                  // el usuario ya la vio (lo guarda Suite)
@@ -155,6 +160,22 @@ Cada novedad (la arma Suite):
   como un mantenimiento.
 - Los medios los sirve Suite (disco `public`, `system-novelties/`): el paquete no trae medios.
 - Los rótulos van directos, sin conectores: "Centro Novedades", no "Centro de ayuda".
+- **Invasivas** (`invasive`): no esperan a que el usuario las busque. Si una sin ver llegó
+  (`releasedAt`) antes de que empezara la sesión del navegador (`session-started-at`, ISO 8601),
+  se abre sola al montar la barra; varias, una tras otra en orden de
+  publicación (`publishedAt`), con "1 de 3" en el encabezado. Si llegó con la sesión abierta, no
+  se le abre nada encima: sale una barra arriba de la barra DOMA (un `DomaAnnouncement`) con
+  "**Novedades pendientes:** {título} · Ver" (varias: "**3 novedades pendientes** · Ver"), como
+  una alerta de la plantilla con borde izquierdo y alineada a la izquierda, para que se distinga
+  de todo lo demás. La X la oculta solo en esa pantalla. Sin `session-started-at`, se abren solas. Cada una se abre una sola vez por carga de
+  página, aunque Inertia monte un layout nuevo.
+- **Consulta sin recargar** (`refresh-announcements`): función de la app que devuelve una promesa
+  con la lista (o con `{ announcements }`). La barra la llama cada `refresh-seconds` (180 por
+  defecto), solo con la pestaña visible, y al volver a ella si la última fue hace más de un
+  minuto. Lo que trae reemplaza `announcements` hasta que la página mande otras. Si falla, la
+  barra se queda con lo que tenía, sin avisar. La ruta que use la app no debe contar como
+  actividad de la sesión ni responder 401 por una falla de Suite (el aviso de sesión recargaría la
+  página).
 
 ### `DomaMenuHeader`
 
@@ -215,26 +236,106 @@ que deben verse sin buscarlos; las novedades van en el Centro Novedades de la ba
   `placement="inline"` ocupa su lugar en la página.
 - Al cerrarlo, el navegador lo recuerda (`localStorage`, clave `doma:announcement:{id}`) hasta que
   se borren los datos del sitio. Si cambia el mensaje, vuelve a salir.
-- Sin mensaje no se muestra; sin pasos no hay enlace.
-- `variant`: `info` (el primario de la app, por defecto) o `warning`.
+- `label`: texto en negrita antes del mensaje, como el título de una alerta de la plantilla.
+- Sin mensaje ni `label` no se muestra; sin pasos no hay enlace.
+- `variant`: `info` (el primario de la app, por defecto), `warning` o `alert` (como
+  `alert-warning alert-border-left` de la plantilla: el amarillo suave con su borde, la letra del
+  warning y una franja de 3 px en el warning a la izquierda; sigue el tema, claro u oscuro).
+- `remember` en `false`: cerrarlo lo oculta solo en esta pantalla; al pasar a otra, recargar o
+  cambiar el mensaje, vuelve a salir.
+- `opens-detail` en `false`: el enlace no abre el detalle, solo emite `open-detail` (la app decide
+  qué abrir), y sale aunque no haya pasos.
+- `align`: `center` (por defecto) o `start`, a la izquierda, con el ícono a la altura de la marca
+  DOMA (20 px). El ícono y el texto quedan centrados en vertical; si el texto no cabe, se parte en
+  líneas junto al ícono, con el enlace al final.
+- Si aparece o se va con la página abierta, entra deslizándose y la barra DOMA, el menú lateral y
+  el contenido bajan o suben con él (`data-doma-announcement-motion` mientras dura la
+  transición). Al cargar la página no hay animación.
 
 ### `DomaAnnouncementDetail`
 
-El detalle de una novedad, con el patrón de los modales de Suite: encabezado con el título
-(y el punto rojo si el usuario no la había visto, `is-new`), el resumen, y un escenario con el medio de cada paso. Si el paso trae
-`before`, el escenario compara antes y ahora con un divisor que se arrastra (o con las flechas
-del teclado sobre él). Debajo, la barra de progreso, los pasos numerados y la explicación del
-paso; al pie, Repetir, Pausar, Entendido y el botón principal (`action`).
+El detalle de una novedad, al 64 % del ancho y el 88 % del alto de la ventana (toda la pantalla
+en un celular). En el encabezado, el título (con el punto rojo si el usuario no la había visto,
+`is-new`) y la fecha de aplicación: "Reinicio del sistema – Aplica el 12 de noviembre de 2026". En
+el cuerpo, la barra de
+progreso (un tramo por paso) y el escenario con el medio del paso llenan todo el alto visible;
+debajo, a los que se llega desplazándose, el resumen, los pasos numerados y la explicación del
+paso. Al pie, Repetir, Pausar, Entendido y el botón principal (`action`).
 
 ```vue
 <DomaAnnouncementDetail :open="abierto" :announcement="novedad" is-new @close="abierto = false" />
 ```
 
-- Los pasos avanzan solos según sus `seconds` (6 por defecto) y se detienen en el último;
-  arrastrar el divisor pausa. Con "reducir movimiento" del sistema, empieza en pausa.
-- El escenario es 16:9 y nunca más alto de lo que deja libre el resto del modal: completo cabe
-  en una pantalla de portátil. Los medios se ajustan sin recortarse.
-- Se cierra con Escape, la X, un clic fuera o Entendido; las flechas pasan de un paso a otro.
+- El escenario es lo que más espacio ocupa: con la barra, llena el alto visible del cuerpo (no
+  menos de 260 px). La imagen o el video se ajustan a él sin recortarse. Sin pasos, el modal se
+  ajusta al texto.
+- **Imagen o GIF:** si el paso trae `before` (también una imagen), el escenario compara antes y
+  ahora con un divisor que se arrastra (o con las flechas del teclado sobre él). El paso dura sus
+  `seconds` (6 por defecto).
+- **Video:** va solo, sin antes (si trae `before`, no se muestra). Se maneja con los controles de
+  `DomaVideoPlayer` sobre el video, arranca en silencio y no se repite: el paso dura lo que dura
+  el video y, al terminar, pasa al siguiente. El sonido y la velocidad que el usuario elija se
+  conservan en los videos siguientes. Espacio, K, J, L, M, `<` y `>` funcionan como en el visor;
+  las flechas siguen pasando de un paso a otro.
+- Los pasos avanzan solos y se detienen en el último; arrastrar el divisor o pausar el video
+  pausa la novedad, y Pausar o Reanudar del pie también pausan o siguen el video. Con "reducir
+  movimiento" del sistema, empieza en pausa.
+- "Pantalla completa", en la esquina del escenario, o el doble clic sobre él, abre el medio en
+  `DomaMediaViewer` (un video, en el segundo en el que iba). Abrirlo pausa la novedad; al
+  cerrarlo, el detalle queda en el paso que se veía y, si es un video, en el segundo en el que
+  iba.
+- `queue` (`{ position, total }`): con más de una, el encabezado dice "1 de 3". Si cambia
+  `announcement` con el detalle abierto, empieza desde el primer paso.
+- Se cierra con Escape, la X, Entendido o un clic fuera; las flechas pasan de un paso a otro.
+- Tamaño: `--doma-novelty-width` y `--doma-novelty-height` (64vw y 88vh por defecto).
+
+### `DomaMediaViewer`
+
+Visor multimedia a pantalla completa. Lo abre el detalle de una novedad; cualquier pantalla
+puede usarlo:
+
+```vue
+<DomaMediaViewer :open="abierto" :items="medios" v-model:index="actual" @close="abierto = false" />
+```
+
+- `items`: `[{ title?, media: { src, type }, before?: { src, type }, startAt? }]`. Flechas a los
+  lados y "Paso 2 / 4" (`item-label`) para pasar de uno a otro. Un video arranca en el segundo
+  `startAt`; `close` lleva `{ time }`, el segundo en el que iba, para seguir desde ahí.
+- Usa la pantalla completa del navegador; donde no se permite (iPhone), cubre la ventana. Esc la
+  cierra (solo el visor, no el detalle).
+- **Video:** `DomaVideoPlayer`, con sus controles en una barra debajo. Se ocultan solos mientras
+  se reproduce. Teclas: espacio o K, ← → (5 s), J L (10 s), ↑ ↓ (volumen), M, `<` `>` (velocidad).
+- **Imagen:** zoom con la rueda (centrado en el puntero), con el pellizco o con los botones; doble
+  clic alterna entre ajustada y 2×; con zoom se arrastra. "Ajustar", "100 %" (tamaño real) y
+  "Original". Teclas: + - 0, ← → (paso anterior o siguiente).
+- Con `before`, "Ahora | Antes" cambia de captura sin perder el zoom.
+- Colores: `--doma-viewer-bg`, `--doma-viewer-text`, `--doma-viewer-control` y
+  `--doma-viewer-control-hover` (tokens.css), del tema de la app.
+
+### `DomaVideoPlayer`
+
+Reproductor de video con controles propios, iguales en todos los navegadores: reproducir, ±10 s,
+línea de tiempo, velocidad (0,5× a 2×), volumen e imagen en imagen. Lo usan el detalle de una
+novedad y el visor; cualquier pantalla puede usarlo:
+
+```vue
+<DomaVideoPlayer :src="video" overlay autoplay v-model:muted="silencio" @ended="siguiente" />
+```
+
+- No se repite: al terminar se queda en el último cuadro y emite `ended` (también `play` y
+  `pause`; la pausa con la que el navegador termina un video no se emite).
+- `autoplay`: arranca al cargar; si el navegador no lo deja con sonido, arranca en silencio.
+  `start-at`: segundo en el que arranca. `v-model:muted` y `v-model:rate` dejan que quien lo usa
+  conserve el sonido y la velocidad entre videos.
+- `overlay`: los controles van sobre el video, con un botón grande de reproducir en el centro
+  cuando está detenido, y se ocultan solos mientras se reproduce y el mouse no se mueve. Sin ella,
+  van en una barra debajo; `hide-controls` la oculta.
+- En un espacio angosto (container query) se quitan el volumen, la imagen en imagen y luego ±10 s.
+- Teclado: quien lo contiene le pasa cada tecla a `handleKey(event)` (expuesto; con
+  `{ arrows: false }` deja las flechas). También expone `play()`, `pause()`, `seekTo(segundos)`,
+  `time()` y `progress()` (0 a 1).
+- Colores: los tokens `--doma-viewer-*`; `--doma-video-gutter` deja un margen a los lados del
+  video (el visor lo usa para sus flechas).
 
 ### Tooltip
 

@@ -38,6 +38,13 @@
     /* Fondo detrás de un modal. */
     --doma-backdrop: rgba(var(--vz-dark-rgb, 33, 37, 41), 0.6);
 
+    /* Visor multimedia a pantalla completa (DomaMediaViewer): oscuro en los
+       dos temas, como cualquier visor, con sus botones translúcidos. */
+    --doma-viewer-bg: rgba(var(--vz-dark-rgb, 33, 37, 41), 0.97);
+    --doma-viewer-text: var(--vz-white, #fff);
+    --doma-viewer-control: color-mix(in srgb, var(--doma-viewer-text) 14%, transparent);
+    --doma-viewer-control-hover: color-mix(in srgb, var(--doma-viewer-text) 26%, transparent);
+
     /* Texto sobre el primario (ítem activo del menú, avatar, tooltip). */
     --doma-on-primary: var(--vz-white, #fff);
 
