@@ -29,8 +29,10 @@ import DomaAnnouncementDetail from './DomaAnnouncementDetail.vue';
 const props = defineProps({
     /** Identifica el aviso; con él se recuerda que el usuario lo cerró. */
     id: { type: String, required: true },
-    /** Texto del aviso. Vacío: no se muestra. */
+    /** Texto del aviso. Sin texto ni `label`: no se muestra. */
     message: { type: String, default: '' },
+    /** En negrita antes del texto, como el título de una alerta de la plantilla. */
+    label: { type: String, default: '' },
     /** Texto del enlace que abre el detalle. */
     linkLabel: { type: String, default: 'Más información' },
     /** Título del detalle. */
@@ -42,7 +44,11 @@ const props = defineProps({
     steps: { type: Array, default: () => [] },
     /** Botón principal del detalle: { label, url }. */
     action: { type: Object, default: null },
-    /** 'info' (el primario de la app) o 'warning'. */
+    /**
+     * 'info' (el primario de la app), 'warning' o 'alert' (como las alertas de
+     * la plantilla con borde izquierdo: amarillo, con una franja a la izquierda;
+     * para lo que debe llamar la atención, como las novedades invasivas).
+     */
     variant: { type: String, default: 'info' },
     /** Ícono de Remix Icon; por defecto, el del tipo de aviso. */
     icon: { type: String, default: '' },
@@ -60,6 +66,11 @@ const props = defineProps({
     opensDetail: { type: Boolean, default: true },
     /** 'top': fijo arriba de la barra DOMA; 'inline': en el flujo de la página. */
     placement: { type: String, default: 'top' },
+    /**
+     * 'center': el texto al centro; 'start': a la izquierda, con el ícono a la
+     * altura de la marca DOMA (la barra de las novedades invasivas).
+     */
+    align: { type: String, default: 'center' },
 });
 
 const emit = defineEmits(['dismiss', 'open-detail']);
@@ -80,11 +91,14 @@ function signature(text) {
     return (hash >>> 0).toString(36);
 }
 
+// Todo lo que dice el aviso: el título en negrita y el texto.
+const fullText = computed(() => `${props.label} ${props.message}`.trim());
+
 function readDismissed() {
     if (!props.remember) return false;
 
     try {
-        return window.localStorage.getItem(STORAGE_PREFIX + props.id) === signature(props.message);
+        return window.localStorage.getItem(STORAGE_PREFIX + props.id) === signature(fullText.value);
     } catch {
         return false;
     }
@@ -94,7 +108,7 @@ function rememberDismissed() {
     if (!props.remember) return;
 
     try {
-        window.localStorage.setItem(STORAGE_PREFIX + props.id, signature(props.message));
+        window.localStorage.setItem(STORAGE_PREFIX + props.id, signature(fullText.value));
     } catch {
         // Sin almacenamiento (navegación privada, datos bloqueados): se cierra
         // solo por esta vez.
@@ -104,12 +118,12 @@ function rememberDismissed() {
 // Se lee al crear el componente, no al montarlo: así toma su lugar en el layout
 // antes de que el layout anterior suelte el suyo (ver hold).
 const dismissed = ref(readDismissed());
-const visible = computed(() => props.message.trim() !== '' && !dismissed.value);
+const visible = computed(() => fullText.value !== '' && !dismissed.value);
 const iconClass = computed(() => props.icon || (props.variant === 'warning' ? 'ri-error-warning-line' : 'ri-information-line'));
 const hasLink = computed(() => (props.opensDetail ? props.steps.length > 0 : props.linkLabel.trim() !== ''));
 
 // Mensaje nuevo: si el usuario no cerró este, sale de nuevo.
-watch(() => props.message, () => {
+watch(fullText, () => {
     dismissed.value = readDismissed();
 });
 
@@ -220,21 +234,23 @@ onUnmounted(release);
         v-if="visible"
         ref="bar"
         class="doma-announcement"
-        :class="[`doma-announcement--${variant}`, `is-${placement}`, { 'is-entering': entering }]"
+        :class="[`doma-announcement--${variant}`, `is-${placement}`, { 'is-start': align === 'start', 'is-entering': entering }]"
         role="status"
         @animationend="entering = false"
     >
         <p class="doma-announcement__text">
             <i class="doma-announcement__icon" :class="iconClass" aria-hidden="true"></i>
-            <span>{{ message }}</span>
-            <button
-                v-if="hasLink"
-                type="button"
-                class="doma-announcement__link"
-                @click="openDetail"
-            >
-                {{ linkLabel }}
-            </button>
+            <span class="doma-announcement__body">
+                <span><strong v-if="label" class="doma-announcement__label">{{ label }}</strong>{{ label && message ? ' ' : '' }}{{ message }}</span>
+                <button
+                    v-if="hasLink"
+                    type="button"
+                    class="doma-announcement__link"
+                    @click="openDetail"
+                >
+                    {{ linkLabel }}
+                </button>
+            </span>
         </p>
 
         <button
@@ -282,6 +298,16 @@ onUnmounted(release);
     --doma-announcement-ink: var(--doma-warning-ink);
 }
 
+/* Como las alertas de la plantilla con borde izquierdo (alert-warning
+   alert-border-left): el amarillo suave con su borde, la letra del warning y
+   una franja de 3 px en el warning a la izquierda (más abajo, después de
+   is-inline, que pone todo el borde). Sigue el tema, claro u oscuro. */
+.doma-announcement--alert {
+    --doma-announcement-bg: var(--doma-warning-soft);
+    --doma-announcement-line: var(--doma-warning-border);
+    --doma-announcement-ink: var(--doma-warning-ink);
+}
+
 /* Arriba de todo, por encima de la barra DOMA (1023). */
 .doma-announcement.is-top {
     position: fixed;
@@ -307,20 +333,62 @@ onUnmounted(release);
     border-radius: var(--doma-radius);
 }
 
+.doma-announcement.doma-announcement--alert {
+    border-left: 3px solid var(--doma-warning);
+}
+
+/* El ícono y el texto (con el enlace al final) centrados en vertical entre sí
+   y en la barra: el ícono es más alto que el texto y, alineado por la base,
+   lo subía. Si el texto no cabe, se parte en líneas junto al ícono. */
 .doma-announcement__text {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
     margin: 0;
+}
+
+.doma-announcement__icon {
+    flex: none;
+    margin-right: 8px;
+    font-size: 17px;
+    line-height: 1;
+}
+
+.doma-announcement__body {
+    min-width: 0;
     text-align: center;
     text-wrap: balance;
 }
 
-.doma-announcement__icon {
-    margin-right: 8px;
-    font-size: 17px;
-    vertical-align: -3px;
+/* A la izquierda, con el ícono a la altura de la marca DOMA (la barra tiene
+   20 px de margen). */
+.doma-announcement.is-start {
+    justify-content: flex-start;
+    padding-left: 20px;
+}
+
+.doma-announcement.is-start .doma-announcement__text {
+    justify-content: flex-start;
+}
+
+.doma-announcement.is-start .doma-announcement__body {
+    text-align: left;
+    text-wrap: pretty;
+}
+
+/* La franja de la alerta ocupa 3 px del margen: el ícono queda en su sitio. */
+.doma-announcement--alert.is-start {
+    padding-left: 17px;
+}
+
+.doma-announcement__label {
+    font-weight: 600;
 }
 
 .doma-announcement__link {
     margin-left: 10px;
+    white-space: nowrap;
     padding: 0;
     border: 0;
     background: none;
@@ -367,6 +435,10 @@ onUnmounted(release);
     }
 
     .doma-announcement__text {
+        justify-content: flex-start;
+    }
+
+    .doma-announcement__body {
         text-align: left;
     }
 }
