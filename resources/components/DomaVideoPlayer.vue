@@ -51,6 +51,8 @@ const duration = ref(0);
 const speed = ref(props.rate);
 const volume = ref(1);
 const silent = ref(props.muted);
+// El navegador no dejó arrancar con sonido (ver startPlayback).
+const soundBlocked = ref(false);
 const pipSupported = typeof document !== 'undefined' && Boolean(document.pictureInPictureEnabled);
 
 const timeLabel = computed(() => `${formatTime(currentTime.value)} / ${formatTime(duration.value)}`);
@@ -87,12 +89,16 @@ function syncVideo() {
 
     if (silent.value !== element.muted) {
         silent.value = element.muted;
-        emit('update:muted', element.muted);
+        if (!element.muted) soundBlocked.value = false;
+        // El silencio que impuso el navegador no es una elección del usuario:
+        // no se le pasa a quien lo usa, para que el siguiente video intente con sonido.
+        if (!soundBlocked.value) emit('update:muted', element.muted);
     }
 }
 
-// El navegador puede negar el sonido si el usuario no ha tocado la página:
-// entonces arranca en silencio.
+// Arranca con sonido. El navegador lo niega si el usuario no ha tocado la
+// página (una novedad que se abre sola al entrar): entonces arranca en silencio
+// y el botón «Activar sonido» avisa que el video tiene audio.
 function startPlayback() {
     const element = video.value;
     if (!element) return;
@@ -100,6 +106,7 @@ function startPlayback() {
     element.play().catch((error) => {
         if (error?.name !== 'NotAllowedError' || element.muted) return;
 
+        soundBlocked.value = true;
         element.muted = true;
         element.play().catch(() => {});
     });
@@ -353,6 +360,11 @@ defineExpose({
             >
                 <i :class="ended ? 'ri-restart-line' : 'ri-play-fill'" aria-hidden="true"></i>
             </button>
+
+            <button v-if="soundBlocked" type="button" class="doma-video__unmute" @click="toggleMute">
+                <i class="ri-volume-mute-line" aria-hidden="true"></i>
+                Activar sonido
+            </button>
         </div>
 
         <div class="doma-video__controls">
@@ -492,6 +504,36 @@ defineExpose({
 
 .doma-video__center:hover {
     opacity: 1;
+}
+
+/* El navegador no dejó arrancar con sonido: avisa que el video tiene audio.
+   Arriba a la izquierda, siempre visible, hasta que se active el sonido. */
+.doma-video__unmute {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--doma-radius);
+    background: var(--doma-viewer-bg);
+    color: var(--doma-viewer-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.doma-video__unmute i {
+    font-size: 16px;
+}
+
+.doma-video__unmute:hover {
+    background: var(--doma-primary);
+    color: var(--doma-on-primary);
 }
 
 /* ---------- Controles ---------- */
