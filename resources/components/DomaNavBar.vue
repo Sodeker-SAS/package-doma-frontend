@@ -288,16 +288,16 @@ const pendingInvasive = computed(() => news.value.filter((item) => item.invasive
 // Las que llegaron con la sesión abierta: van a la barra de arriba.
 const barNews = computed(() => pendingInvasive.value.filter((item) => !arrivedBeforeSession(item)).sort(byPublication));
 
-const barMessage = computed(() => {
+// Una: "Novedades pendientes: {título}"; varias: "3 novedades pendientes". Lo
+// primero va en negrita, como el título de una alerta.
+const barLabel = computed(() => {
     if (!props.noveltiesCenter || barNews.value.length === 0) return '';
 
-    return barNews.value.length === 1
-        ? `Nueva novedad: ${barNews.value[0].title}`
-        : `${barNews.value.length} novedades nuevas`;
+    return barNews.value.length === 1 ? 'Novedades pendientes:' : `${barNews.value.length} novedades pendientes`;
 });
 
-const barLink = computed(() => (barNews.value.length === 1 ? 'Ver novedad' : 'Ver novedades'));
-const barVariant = computed(() => (barNews.value.some((item) => item.critical) ? 'warning' : 'info'));
+const barMessage = computed(() => (barLabel.value !== '' && barNews.value.length === 1 ? barNews.value[0].title : ''));
+
 
 // Novedades que se abren una tras otra en el detalle: "1 de 3".
 const queue = ref([]);
@@ -684,14 +684,17 @@ function formatDate(value) {
 
         <!-- Invasivas que llegaron con la sesión abierta. Fuera de la barra
              (en <body>): va fija arriba de todo y empuja la barra hacia abajo.
-             La X la oculta solo en esta pantalla. -->
+             Como una alerta de la plantilla con borde izquierdo, con el texto a
+             la izquierda, para que se note. La X la oculta solo en esta pantalla. -->
         <Teleport to="body">
             <DomaAnnouncement
                 id="doma-novelties-invasive"
+                :label="barLabel"
                 :message="barMessage"
-                :link-label="barLink"
-                :variant="barVariant"
+                link-label="Ver"
+                variant="alert"
                 icon="ri-megaphone-line"
+                align="start"
                 :remember="false"
                 :opens-detail="false"
                 @open-detail="openBarNews"
