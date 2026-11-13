@@ -23,12 +23,18 @@ necesita alguna acción manual.
   `handleKey(event)` para el teclado.
 - `DomaAnnouncementDetail`: `queue` ("1 de 3") y el botón "Pantalla completa" del escenario (o
   doble clic), que abre el visor.
-- `DomaAnnouncement`: `remember` (cerrarlo solo en esta pantalla) y `opens-detail` (el enlace solo
-  emite `open-detail`). Si aparece o se va con la página abierta, el layout se mueve con una
-  transición (`data-doma-announcement-motion`).
+- `DomaAnnouncement`: `remember` (cerrarlo solo en esta pantalla), `opens-detail` (el enlace solo
+  emite `open-detail`), `align` (`start`: a la izquierda), `label` (en negrita antes del mensaje) y la
+  variante `alert` (como las alertas de la plantilla con borde izquierdo). La barra de las
+  invasivas los usa: "**Novedades pendientes:** {título}" o "**3 novedades pendientes**", como
+  alerta y a la izquierda.
+  Si aparece o se va con la página abierta, el layout se mueve con una transición
+  (`data-doma-announcement-motion`).
 
 ### Cambiado
 
+- `DomaAnnouncement`: el ícono y el texto quedan centrados en vertical (el texto quedaba unos 2 px
+  arriba); si el texto no cabe, se parte en líneas junto al ícono.
 - `DomaAnnouncementDetail` ocupa el 64 % del ancho y el 88 % del alto de la ventana (toda en un
   celular): la fecha de aplicación pasa al encabezado ("Título – Aplica el…"); la barra de
   progreso (un tramo por paso)
