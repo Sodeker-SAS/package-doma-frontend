@@ -43,6 +43,21 @@
     transition: none;
 }
 
+/* El aviso del sistema aparece o se va con la página abierta
+   (DomaAnnouncement): la barra, el menú lateral, el botón de colapsar y el
+   contenido bajan o suben con él, sin saltos. El componente pone el atributo
+   solo mientras dura la transición; al cargar la página no hay animación. */
+html[data-doma-layout][data-doma-announcement-motion] #page-topbar,
+html[data-doma-layout][data-doma-announcement-motion] .navbar-menu.doma-app-menu,
+html[data-doma-layout][data-doma-announcement-motion] .navbar-menu.doma-app-menu::before,
+html[data-doma-layout][data-doma-announcement-motion] .page-content {
+    transition: top 0.25s ease-out, padding-top 0.25s ease-out;
+}
+
+html[data-doma-layout][data-doma-announcement-motion] .doma-sidebar-toggle {
+    transition: left 0.1s ease-out, top 0.25s ease-out;
+}
+
 /* ---------- Título de página ---------- */
 
 /* Plano, como la barra: solo la línea inferior, sin sombra. */
