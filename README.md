@@ -165,8 +165,9 @@ Cada novedad (la arma Suite):
   se abre sola al montar la barra; varias, una tras otra en orden de
   publicación (`publishedAt`), con "1 de 3" en el encabezado. Si llegó con la sesión abierta, no
   se le abre nada encima: sale una barra arriba de la barra DOMA (un `DomaAnnouncement`) con
-  "Nueva novedad: {título} · Ver novedad", en amarillo si es `critical`; la X la oculta solo en esa
-  pantalla. Sin `session-started-at`, se abren solas. Cada una se abre una sola vez por carga de
+  "**Novedades pendientes:** {título} · Ver" (varias: "**3 novedades pendientes** · Ver"), como
+  una alerta de la plantilla con borde izquierdo y alineada a la izquierda, para que se distinga
+  de todo lo demás. La X la oculta solo en esa pantalla. Sin `session-started-at`, se abren solas. Cada una se abre una sola vez por carga de
   página, aunque Inertia monte un layout nuevo.
 - **Consulta sin recargar** (`refresh-announcements`): función de la app que devuelve una promesa
   con la lista (o con `{ announcements }`). La barra la llama cada `refresh-seconds` (180 por
@@ -235,12 +236,18 @@ que deben verse sin buscarlos; las novedades van en el Centro Novedades de la ba
   `placement="inline"` ocupa su lugar en la página.
 - Al cerrarlo, el navegador lo recuerda (`localStorage`, clave `doma:announcement:{id}`) hasta que
   se borren los datos del sitio. Si cambia el mensaje, vuelve a salir.
-- Sin mensaje no se muestra; sin pasos no hay enlace.
-- `variant`: `info` (el primario de la app, por defecto) o `warning`.
+- `label`: texto en negrita antes del mensaje, como el título de una alerta de la plantilla.
+- Sin mensaje ni `label` no se muestra; sin pasos no hay enlace.
+- `variant`: `info` (el primario de la app, por defecto), `warning` o `alert` (como
+  `alert-warning alert-border-left` de la plantilla: el amarillo suave con su borde, la letra del
+  warning y una franja de 3 px en el warning a la izquierda; sigue el tema, claro u oscuro).
 - `remember` en `false`: cerrarlo lo oculta solo en esta pantalla; al pasar a otra, recargar o
   cambiar el mensaje, vuelve a salir.
 - `opens-detail` en `false`: el enlace no abre el detalle, solo emite `open-detail` (la app decide
   qué abrir), y sale aunque no haya pasos.
+- `align`: `center` (por defecto) o `start`, a la izquierda, con el ícono a la altura de la marca
+  DOMA (20 px). El ícono y el texto quedan centrados en vertical; si el texto no cabe, se parte en
+  líneas junto al ícono, con el enlace al final.
 - Si aparece o se va con la página abierta, entra deslizándose y la barra DOMA, el menú lateral y
   el contenido bajan o suben con él (`data-doma-announcement-motion` mientras dura la
   transición). Al cargar la página no hay animación.
