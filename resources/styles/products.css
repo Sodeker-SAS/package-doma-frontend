@@ -1,0 +1,58 @@
+/*
+ * Tarjeta de un producto DOMA: lo que comparten el lanzador de la barra
+ * (`DomaNavBar`) y la vista Productos del menú móvil (`DomaMobileMenu`). Cada
+ * uno pone su propia forma (tamaño, borde, espacios); los colores salen de aquí.
+ *
+ *     <a class="doma-product is-current" :style="{ '--module': color }">
+ *         <span class="doma-product__icon"><i class="ri-…"></i></span>
+ *         <i class="ri-lock-line doma-product__lock"></i>  ← solo si está bloqueado
+ *     </a>
+ *
+ * `--module` es el color de identidad del producto (`moduleColor(slug)`).
+ */
+
+.doma-product {
+    --module-ink: color-mix(in srgb, var(--module) 80%, var(--vz-black, #000));
+
+    position: relative;
+}
+
+/* El producto en el que se está: su color, suave, de fondo. */
+.doma-product.is-current {
+    background: color-mix(in srgb, var(--module) 10%, transparent);
+}
+
+.doma-product__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--doma-radius);
+    background: color-mix(in srgb, var(--module) 14%, transparent);
+    color: var(--module-ink);
+    font-size: 19px;
+}
+
+/* Un producto que la empresa no tiene: apagado, con candado. */
+.doma-product.is-locked {
+    color: var(--doma-muted);
+    cursor: default;
+}
+
+.doma-product.is-locked .doma-product__icon {
+    opacity: 0.45;
+}
+
+.doma-product__lock {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    color: var(--doma-muted);
+    font-size: 12px;
+}
+
+[data-bs-theme="dark"] .doma-product {
+    --module-ink: color-mix(in srgb, var(--module) 70%, var(--vz-white, #fff));
+}
