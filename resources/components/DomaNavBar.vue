@@ -2,10 +2,8 @@
 // Compartido por todas las barras mientras no se recargue la página: al
 // cambiar de página, Inertia monta un layout nuevo (con su barra).
 
-// Novedades que el usuario abrió en esta página. El servidor es la fuente
-// (`seen` de cada novedad), pero tarda una petición en enterarse: esto evita
-// que vuelva a salir como nueva si el layout se monta antes.
-const seenHere = new Set();
+// Las novedades que el usuario abrió en esta página las lleva
+// utils/announcements.js, compartido con el menú móvil.
 
 // Invasivas que ya se abrieron solas: la barra del layout nuevo no las repite.
 const shownHere = new Set();
@@ -18,6 +16,7 @@ let lastRefreshAt = 0;
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDismiss } from '../composables/useDismiss.js';
+import { formatAnnouncementDate as formatDate, isoDate, isUnseen, markSeenHere, productNews } from '../utils/announcements.js';
 import { moduleColor } from '../utils/moduleColors.js';
 import DomaAnnouncement from './DomaAnnouncement.vue';
 import DomaAnnouncementDetail from './DomaAnnouncementDetail.vue';
@@ -192,9 +191,6 @@ function logout() {
 
 // ---------- Centro Novedades ----------
 
-// Cambia cada vez que el usuario abre una novedad (seenHere no es reactivo).
-const seenNow = ref(0);
-
 // Lo último que trajo la consulta; mientras no llegue, lo que mandó la página.
 const refreshed = ref(null);
 const source = computed(() => refreshed.value ?? props.announcements);
@@ -203,21 +199,12 @@ watch(() => props.announcements, () => {
     refreshed.value = null;
 });
 
-// Solo las de este producto: sin `apps`, la novedad es para todos.
-const appliesHere = (item) => !Array.isArray(item.apps) || item.apps.length === 0 || item.apps.includes(props.currentModule);
-
-// Una novedad queda vista solo cuando el usuario la abre, no al abrir el
-// Centro Novedades: mientras quede alguna sin abrir, el botón conserva el punto
-// rojo y cada una lo lleva en su ícono.
-const isUnseen = (item) => seenNow.value >= 0 && !item.seen && !seenHere.has(item.id);
-
-// Todas se abren en su detalle, tengan pasos o no: ahí está el resumen. Primero
-// las que el usuario no ha abierto; dentro de cada grupo, en el orden en que
-// llegan (la más reciente primero).
-const news = computed(() => source.value
-    .filter((item) => item?.id != null && item.title && appliesHere(item))
-    .map((item) => ({ ...item, id: String(item.id) }))
-    .sort((a, b) => Number(isUnseen(b)) - Number(isUnseen(a))));
+// Solo las de este producto (sin `apps`, la novedad es para todos) y primero
+// las que el usuario no ha abierto. Una novedad queda vista solo cuando el
+// usuario la abre: mientras quede alguna sin abrir, el botón conserva el punto
+// rojo y cada una lo lleva en su ícono. Todas se abren en su detalle, tengan
+// pasos o no: ahí está el resumen.
+const news = computed(() => productNews(source.value, props.currentModule));
 
 const hasUnseen = computed(() => news.value.some(isUnseen));
 
@@ -242,8 +229,7 @@ function openAnnouncement(item, fromQueue = false) {
     detail.value = item;
 
     if (detailIsNew.value) {
-        seenHere.add(item.id);
-        seenNow.value += 1;
+        markSeenHere(item.id);
         emit('announcements-seen', [item.id]);
     }
 }
@@ -391,20 +377,6 @@ onBeforeUnmount(() => {
     window.clearInterval(refreshTimer);
     document.removeEventListener('visibilitychange', onVisibilityChange);
 });
-
-const DATE_FORMAT = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-
-function isoDate(value) {
-    return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? value : null;
-}
-
-function formatDate(value) {
-    if (!isoDate(value)) return value;
-
-    const [year, month, day] = value.split('-').map(Number);
-
-    return DATE_FORMAT.format(new Date(year, month - 1, day));
-}
 </script>
 
 <template>
@@ -457,18 +429,18 @@ function formatDate(value) {
                                 v-for="module in launcherModules"
                                 :key="module.slug"
                                 :href="module.href"
-                                class="doma-navbar__module"
+                                class="doma-navbar__module doma-product"
                                 :class="{
                                     'is-locked': !module.href,
                                     'is-current': module.slug === currentModule,
                                 }"
                                 :style="{ '--module': module.color }"
                             >
-                                <span class="doma-navbar__module-icon">
+                                <span class="doma-product__icon">
                                     <i :class="module.icon || 'ri-apps-line'"></i>
                                 </span>
                                 <span class="doma-navbar__module-name">{{ module.name }}</span>
-                                <i v-if="!module.href" class="ri-lock-line doma-navbar__module-lock" aria-hidden="true"></i>
+                                <i v-if="!module.href" class="ri-lock-line doma-product__lock" aria-hidden="true"></i>
                             </component>
                         </div>
 
@@ -1081,10 +1053,9 @@ function formatDate(value) {
     padding: 4px;
 }
 
+/* Los colores de la tarjeta (actual, ícono, bloqueado) son los de `.doma-product`
+   (styles/products.css), los mismos del menú móvil; aquí solo su forma. */
 .doma-navbar__module {
-    --module-ink: color-mix(in srgb, var(--module) 80%, var(--vz-black, #000));
-
-    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1102,22 +1073,6 @@ a.doma-navbar__module:hover {
     color: var(--doma-heading);
 }
 
-.doma-navbar__module.is-current {
-    background: color-mix(in srgb, var(--module) 10%, transparent);
-}
-
-.doma-navbar__module-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: var(--doma-radius);
-    background: color-mix(in srgb, var(--module) 14%, transparent);
-    color: var(--module-ink);
-    font-size: 19px;
-}
-
 .doma-navbar__module-name {
     display: -webkit-box;
     overflow: hidden;
@@ -1126,23 +1081,6 @@ a.doma-navbar__module:hover {
     line-height: 1.3;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
-}
-
-.doma-navbar__module.is-locked {
-    color: var(--doma-muted);
-    cursor: default;
-}
-
-.doma-navbar__module.is-locked .doma-navbar__module-icon {
-    opacity: 0.45;
-}
-
-.doma-navbar__module-lock {
-    position: absolute;
-    top: 8px;
-    right: 10px;
-    color: var(--doma-muted);
-    font-size: 12px;
 }
 
 /* Más productos de los que caben: lleva al hub, donde están todos. */
@@ -1388,10 +1326,6 @@ a.doma-navbar__module:hover {
     margin-top: 4px;
     padding-top: 4px;
     border-top: 1px solid var(--doma-border);
-}
-
-[data-bs-theme="dark"] .doma-navbar__module {
-    --module-ink: color-mix(in srgb, var(--module) 70%, var(--vz-white, #fff));
 }
 
 /* ---------- Pantallas angostas ---------- */

@@ -5,9 +5,11 @@
  *
  * Los estilos de cada componente van en su propio <style scoped>, no aquí.
  * Aquí van los tokens y lo que se aplica sobre el marcado de la plantilla de
- * cada app (layout y menú lateral) o de otras librerías (tooltip de PrimeVue).
+ * cada app (layout y menú lateral) o de otras librerías (tooltip de PrimeVue),
+ * y lo que comparten varios componentes (la tarjeta de un producto).
  */
 @import './tokens.css';
 @import './tooltip.css';
 @import './layout.css';
 @import './menu.css';
+@import './products.css';

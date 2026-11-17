@@ -11,15 +11,17 @@ cada aplicación compila su fuente con su propio Vite, igual que el resto de su 
 resources/
 ├── index.js          punto de entrada público: import { … } from '@doma'
 ├── components/       componentes Vue (SFC con <script setup>)
+│   └── mobile/       vistas móviles: barra de entrada y menú de la app
 ├── composables/      lógica reutilizable (useAlgo)
 ├── directives/       directivas de Vue (v-doma-tooltip)
-├── utils/            funciones sueltas (moduleColor, holdDomaLayout)
+├── utils/            funciones sueltas (moduleColor, holdDomaLayout, buildMenuSections)
 └── styles/
     ├── doma.css      estilos globales; la app lo importa una sola vez
     ├── tokens.css    variables CSS --doma-* (color, tipografía, espaciado…)
     ├── tooltip.css   tooltips de DOMA y el aspecto de los de PrimeVue y Bootstrap
     ├── layout.css    barra a todo el ancho y menú lateral sobre la plantilla Velzon
-    └── menu.css      ítems del menú lateral, su panel flotante y su tooltip
+    ├── menu.css      ítems del menú lateral, su panel flotante y su tooltip
+    └── products.css  colores de la tarjeta de un producto (lanzador y menú móvil)
 vite.js               plugin de Vite que conecta el paquete con la app
 package.json          solo declara peerDependencies; no se instala
 ```
@@ -341,6 +343,164 @@ novedad y el visor; cualquier pantalla puede usarlo:
 - Colores: los tokens `--doma-viewer-*`; `--doma-video-gutter` deja un margen a los lados del
   video (el visor lo usa para sus flechas).
 
+### Vistas móviles
+
+En teléfono y tablet no hay barra DOMA ni menú lateral: la pantalla de entrada de cada módulo
+lleva una barra propia con el botón del menú de la app, y el menú es un panel lateral con todo lo
+que en escritorio está en la barra y en el menú. Viven en `components/mobile/`.
+
+Como `DomaNavBar`, no conocen el router ni la sesión: la app los alimenta por props con los mismos
+datos que ya le pasa a la barra de escritorio.
+
+#### `isMobileDevice(pageProps)`
+
+Decide si se muestran las vistas móviles o las de escritorio. Mira el dispositivo, no el ancho:
+una ventana angosta en un computador sigue siendo un computador, y un computador táctil también.
+
+1. Si la app manda `isMobile` en las props de la página (su servidor lo decidió por el
+   User-Agent), usa ese dato.
+2. Si no, mira el User-Agent en el navegador con la misma regla
+   (`android|iphone|ipad|ipod|blackberry|windows phone|mobile`). Las páginas las pinta el
+   navegador, así que el resultado es el mismo: **la app no necesita nada en su servidor**.
+3. Suma el iPad, que desde iPadOS 13 se presenta como un Mac: un Mac con pantalla táctil.
+
+`isMobileUserAgent(userAgent)` aplica solo la regla del User-Agent.
+
+#### `DomaMobileLayout`
+
+El armazón de una página en móvil: la barra arriba (fija al desplazar), el contenido con el mismo
+aire de la plantilla (`.page-content` más `container-fluid`) y el menú de la app. El layout de
+escritorio de cada app lo pinta en lugar de su barra DOMA y su menú lateral:
+
+```vue
+<DomaMobileLayout v-if="isMobileDevice($page.props)">
+    <template #navbar>
+        <DomaMobileNavBar :title="modulo" :subtitle="producto" :user="usuario" @logout="…" />
+    </template>
+    <slot />
+    <template #menu><SaiMobileMenu /></template>
+</DomaMobileLayout>
+<div v-else id="layout-wrapper">…</div>
+```
+
+Sin `navbar`, la página pone la suya (un detalle con su barra de color y «volver»). Lo que se
+pega a los bordes con márgenes negativos de `--vz-gutter-x` sigue cuadrando.
+
+#### `DomaMobileNavBar`
+
+Barra de las pantallas de entrada: el botón ☰ (36 px; 40 px desde 768 px, con un área táctil de
+44 px), el título y el subtítulo del módulo, y las iniciales del usuario con «Cerrar Sesión».
+
+```vue
+<DomaMobileNavBar
+    title="Remisiones"
+    subtitle="Transporte"
+    :user="{ name }"          <!-- sin usuario no sale la cuenta -->
+    :menu="true"              <!-- en false, la esquina muestra el ícono del módulo (icon) -->
+    icon="ri-truck-line"
+    :logoutable="true"
+    @logout="…"
+>
+    <template #actions><!-- botones antes de la cuenta --></template>
+</DomaMobileNavBar>
+```
+
+El aire de los lados es `--doma-mobile-gutter` (14 px; 20 px desde tablet): la app lo cambia para
+alinear la barra con el contenido de su pantalla.
+
+#### `DomaMobileMenu`
+
+El panel lateral, de arriba abajo: el usuario, la empresa con «Cambiar», tres accesos (Productos,
+Novedades con las pendientes y Configuración), los módulos con el título «Menú» y el activo en el
+primario sólido, y «Cerrar sesión» en rojo. Cambiar empresa, Productos DOMA y Centro Novedades se
+abren dentro del mismo panel, con «volver»; una novedad abre su detalle
+(`DomaAnnouncementDetail`).
+
+La app lo monta **una sola vez** en su layout móvil; lo abre el botón de `DomaMobileNavBar` por
+`useDomaMobileMenu`, sin cablear nada en cada pantalla.
+
+```vue
+<DomaMobileMenu
+    :open="isOpen"
+    :user="{ name, caption, avatarUrl }"
+    :tenant="{ id, name, caption }"
+    :tenants="empresas"
+    :tenant-switchable="true"
+    :products="productos"          <!-- los mismos `modules` de DomaNavBar -->
+    current-product="sai"
+    :home-url="homeUrl"            <!-- «Inicio DOMA», al pie de Productos -->
+    :config-url="configUrl"
+    :announcements="novedades"     <!-- las mismas de DomaNavBar -->
+    :manage-url="manageUrl"
+    :sections="secciones"          <!-- buildMenuSections(…) -->
+    :link-component="Link"         <!-- el Link de Inertia; por defecto 'a' -->
+    @close="close"
+    @select-tenant="(empresa) => …"
+    @logout="…"
+    @announcements-seen="(ids) => …"
+/>
+```
+
+- Las novedades son las de `DomaNavBar` y se marcan vistas en las dos: abrir una en el menú apaga
+  su punto en la barra.
+- Los productos van de dos en dos con los colores del lanzador (`.doma-product`,
+  `styles/products.css`): su color de identidad, el actual resaltado y los que la empresa no
+  tiene apagados con candado.
+- Los colores de los módulos son los del menú lateral del tema (`--vz-vertical-menu-*`).
+
+#### `DomaMobileAccountMenu`
+
+Las iniciales del usuario con «Bienvenido …!» y «Cerrar Sesión». La usa `DomaMobileNavBar`; para
+una barra de color (la de un detalle) va con `variant="topbar"`, translúcida.
+
+```vue
+<DomaMobileAccountMenu :user="{ name }" variant="topbar" @logout="…" />
+```
+
+#### `useDomaMobileMenu()` y `buildMenuSections()`
+
+- `useDomaMobileMenu()` → `{ isOpen, open, close }`: un solo estado para toda la página.
+- `buildMenuSections({ modules, groups, component, overrides, subItems })`: arma las secciones
+  del menú a partir de `tenantContext.ownModules` y `ownMenuGroups`, con el mismo orden, los
+  mismos grupos y el mismo módulo activo que el menú lateral. `component` es el componente Inertia
+  de la página; `overrides`, los prefijos que no son el PascalCase del código (el
+  `MODULE_COMPONENTS` de cada app). `activeModuleCode(modules, component, overrides)` da solo el
+  código del activo.
+
+#### Conectar una app
+
+La app necesita, como con la barra de escritorio, su adaptador. En Sai-Doma:
+
+```vue
+<!-- Components/SaiMobileMenu.vue, montado una vez en el layout móvil -->
+<script setup>
+import { computed, onBeforeUnmount } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { DomaMobileMenu, buildMenuSections, useDomaMobileMenu } from '@doma';
+import { MODULE_COMPONENTS } from '@/Components/menuConfig.js';
+import { useDomaNavigation } from '@/Composables/useDomaNavigation'; // los datos de SaiNavBar
+
+const page = usePage();
+const navigation = useDomaNavigation();
+const { isOpen, close } = useDomaMobileMenu();
+
+const sections = computed(() => buildMenuSections({
+    modules: page.props.tenantContext?.ownModules ?? [],
+    groups: page.props.tenantContext?.ownMenuGroups ?? [],
+    component: page.component ?? '',
+    overrides: MODULE_COMPONENTS,
+}));
+
+// Al cambiar de página el menú no queda abierto sobre la nueva.
+const stop = router.on('navigate', close);
+onBeforeUnmount(() => { stop(); close(); });
+</script>
+```
+
+En su layout de escritorio, `DomaMobileLayout` con ese menú cuando `isMobileDevice()` es
+verdadero; y en las pantallas de entrada que tengan su propia vista móvil, `DomaMobileNavBar` con
+el título del módulo y el usuario.
+
 ### Tooltip
 
 Todos los tooltips se ven igual en todas las apps: fondo del primario de la app, su texto, el
@@ -412,6 +572,8 @@ La app ya no define estos estilos en su `custom.scss` ni en su `menu.vue`.
   y el lanzador de todas las apps. Hoy es el primario de cada app y es provisional: los colores
   están juntos en `utils/moduleColors.js` para cambiarlos en un solo lugar.
 - `useDismiss(ancla, cerrar)`: cierra un menú al hacer clic fuera o presionar Escape.
+- `buildMenuSections(…)` y `activeModuleCode(…)`: los módulos del menú y el activo (ver
+  [Vistas móviles](#vistas-móviles)).
 - `holdDomaLayout()` / `releaseDomaLayout()` y `DOMA_LAYOUT_ATTR`: ponen y quitan el atributo
   del layout. Al cambiar de módulo, Inertia monta el layout nuevo antes de desmontar el anterior;
   el atributo solo se quita cuando ya no queda ninguno montado. Si se quitara en ese cambio, la
