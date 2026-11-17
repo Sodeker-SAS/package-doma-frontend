@@ -3,6 +3,40 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.4] - sin publicar
+
+### Añadido
+
+- Vistas móviles (`components/mobile/`): `DomaMobileNavBar`, la barra de las pantallas de entrada
+  (botón ☰, título, subtítulo y cuenta), y `DomaMobileMenu`, el menú de la app en un panel
+  lateral: usuario, empresa con «Cambiar», Productos, Centro Novedades, Configuración, los módulos
+  (título «Menú» y el activo en el primario sólido) y «Cerrar sesión». Cambiar empresa, Productos
+  DOMA y Centro Novedades se abren dentro del panel. Reciben los mismos datos que `DomaNavBar`.
+- `DomaMobileMenuButton` y `useDomaMobileMenu()`: el botón ☰ y el estado que lo une con el menú,
+  montado una sola vez en el layout móvil de la app.
+- `DomaMobileAccountMenu`: las iniciales del usuario con «Bienvenido …!» y «Cerrar Sesión» en
+  rojo; `variant="topbar"` para una barra de color.
+- `buildMenuSections()` y `activeModuleCode()`: los módulos del catálogo de permisos en el orden,
+  los grupos y con el activo del menú lateral.
+- `styles/products.css` (en `doma.css`): los colores de la tarjeta de un producto (`.doma-product`),
+  los mismos en el lanzador y en el menú móvil.
+- `isMobileDevice(pageProps)` e `isMobileUserAgent()`: teléfono o tablet por el dispositivo, no
+  por el ancho. Usa el `isMobile` de la página si la app lo manda; si no, el User-Agent del
+  navegador. Siempre suma el iPad que se presenta como Mac. La app no necesita nada en su servidor.
+- `DomaMobileLayout`: el armazón de una página en móvil (barra fija arriba, contenido con el aire
+  de la plantilla y el menú), para que el layout de escritorio de la app lo pinte en teléfono y
+  tablet en lugar de la barra DOMA y el menú lateral.
+
+### Cambiado
+
+- `DomaNavBar`: el lanzador usa `.doma-product` y el Centro Novedades, `utils/announcements.js`,
+  compartidos con el menú móvil. Se ve y funciona igual; una novedad abierta en el menú móvil ya
+  no sale pendiente en la barra.
+
+**Acción en la app:** ninguna para seguir como antes. Para las vistas móviles: un adaptador de
+`DomaMobileMenu` (como `SaiMobileMenu` en Sai-Doma) y, en el layout de escritorio,
+`DomaMobileLayout` cuando `isMobileDevice()` sea verdadero. Ver «Vistas móviles» en el README.
+
 ## [0.3.3] - 2026-11-13
 
 ### Cambiado
