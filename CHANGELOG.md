@@ -3,7 +3,7 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
-## [Sin publicar]
+## [0.3.6] - 2026-11-18
 
 ### Cambiado
 
