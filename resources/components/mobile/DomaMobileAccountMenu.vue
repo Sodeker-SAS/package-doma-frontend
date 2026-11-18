@@ -95,11 +95,12 @@ function logout() {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* En la barra clara: el círculo de color, del alto del botón del menú. */
+/* En la barra clara: el círculo de color, del alto del botón del menú. Toma el
+   primario de la app, como el avatar del menú móvil. */
 .doma-mobile-account__toggle--avatar {
     width: 34px;
     height: 34px;
-    background: var(--doma-warning);
+    background: var(--doma-primary);
     color: var(--doma-on-primary);
     font-size: 13px;
 }
