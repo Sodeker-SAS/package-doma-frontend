@@ -21,6 +21,7 @@ export { default as DomaMobileAccountMenu } from './components/mobile/DomaMobile
 
 export { useDismiss } from './composables/useDismiss.js';
 export { useDomaMobileMenu } from './composables/useDomaMobileMenu.js';
+export { useMobileDevice } from './composables/useMobileDevice.js';
 
 export { vDomaTooltip } from './directives/domaTooltip.js';
 

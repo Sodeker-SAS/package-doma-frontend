@@ -366,6 +366,32 @@ una ventana angosta en un computador sigue siendo un computador, y un computador
 
 `isMobileUserAgent(userAgent)` aplica solo la regla del User-Agent.
 
+#### `useMobileDevice(pageProps)`
+
+`isMobileDevice` reactivo: `{ isMobile }`, un ref de solo lectura que se actualiza solo cuando el
+dispositivo cambia sin recargar la página. Se vuelve a mirar en cada `resize`, que es lo que
+dispara el modo dispositivo de las DevTools al cambiar el User-Agent, y otra vez 250 ms después:
+el `resize` puede llegar antes de que se aplique el User-Agent nuevo. Girar un teléfono también
+dispara `resize`, pero el valor no cambia.
+
+`pageProps` son las props de la página o una función que las devuelve (para leer el `isMobile`
+que la app mande desde su servidor). El composable solo avisa del cambio; montar o desmontar el
+menú lateral de escritorio es de cada app:
+
+```js
+import { usePage } from '@inertiajs/vue3';
+import { nextTick, watch } from 'vue';
+import { useMobileDevice } from '@doma';
+
+const page = usePage();
+const { isMobile } = useMobileDevice(() => page.props);
+
+watch(isMobile, (mobile) => (mobile ? desmontarEscritorio() : nextTick(montarEscritorio)));
+```
+
+El layout pinta `DomaMobileLayout` con `v-if="isMobile"` en lugar de llamar a
+`isMobileDevice($page.props)` en el template, que se calcula una sola vez.
+
 #### `DomaMobileLayout`
 
 El armazón de una página en móvil: la barra arriba (fija al desplazar), el contenido con el mismo
@@ -460,6 +486,7 @@ una barra de color (la de un detalle) va con `variant="topbar"`, translúcida.
 #### `useDomaMobileMenu()` y `buildMenuSections()`
 
 - `useDomaMobileMenu()` → `{ isOpen, open, close }`: un solo estado para toda la página.
+- `useMobileDevice(pageProps)` → `{ isMobile }`: el dispositivo, reactivo (ver arriba).
 - `buildMenuSections({ modules, groups, component, overrides, subItems })`: arma las secciones
   del menú a partir de `tenantContext.ownModules` y `ownMenuGroups`, con el mismo orden, los
   mismos grupos y el mismo módulo activo que el menú lateral. `component` es el componente Inertia

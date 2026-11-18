@@ -3,6 +3,18 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.5] - 2026-11-18
+
+### Añadido
+
+- `useMobileDevice(pageProps)`: `isMobileDevice` reactivo. Devuelve `{ isMobile }`, un ref de
+  solo lectura que se vuelve a calcular en cada `resize`; así el layout pasa de escritorio a móvil
+  (y al revés) al activar o quitar el modo dispositivo de las DevTools, sin recargar.
+
+**Acción en la app:** ninguna para seguir como antes. Para cambiar de layout sin recargar: en el
+layout de escritorio, `useMobileDevice(() => page.props)` en lugar de `isMobileDevice(...)`, y un
+`watch` de `isMobile` que monte o desmonte lo que necesite su menú lateral.
+
 ## [0.3.4] - sin publicar
 
 ### Añadido
