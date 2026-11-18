@@ -3,6 +3,15 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [Sin publicar]
+
+### Cambiado
+
+- `DomaMobileAccountMenu`: el círculo de la cuenta en la barra móvil (variante `avatar`) toma el
+  primario de la app (`--doma-primary`) en lugar del amarillo, como el avatar del menú móvil.
+
+**Acción en la app:** ninguna.
+
 ## [0.3.5] - 2026-11-18
 
 ### Añadido
