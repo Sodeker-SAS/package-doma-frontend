@@ -35,6 +35,8 @@ const props = defineProps({
     homeUrl: { type: String, default: '' },
     /** Configuración DOMA; vacío oculta el acceso. */
     configUrl: { type: String, default: '' },
+    /** Acceso Novedades, como `noveltiesCenter` de DomaNavBar; en false se oculta. */
+    noveltiesCenter: { type: Boolean, default: true },
     /** Centro Novedades: las mismas `announcements` de DomaNavBar. */
     announcements: { type: Array, default: () => [] },
     /** Administrar novedades, solo para quien puede hacerlo. */
@@ -143,6 +145,7 @@ function openAnnouncement(item) {
                             Productos
                         </button>
                         <button
+                            v-if="noveltiesCenter"
                             type="button"
                             class="doma-mobile-menu__action"
                             :aria-label="unseenCount ? `Novedades, ${unseenCount} pendientes por ver` : 'Novedades'"

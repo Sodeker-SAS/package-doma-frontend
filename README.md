@@ -456,6 +456,7 @@ La app lo monta **una sola vez** en su layout móvil; lo abre el botón de `Doma
     current-product="sai"
     :home-url="homeUrl"            <!-- «Inicio DOMA», al pie de Productos -->
     :config-url="configUrl"
+    :novelties-center="true"       <!-- acceso Novedades; false lo oculta, como en DomaNavBar -->
     :announcements="novedades"     <!-- las mismas de DomaNavBar -->
     :manage-url="manageUrl"
     :sections="secciones"          <!-- buildMenuSections(…) -->
