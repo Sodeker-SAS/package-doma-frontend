@@ -3,6 +3,16 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [Sin publicar]
+
+### Añadido
+
+- `DomaMobileMenu`: prop `noveltiesCenter` (por defecto `true`), como la de `DomaNavBar`; en
+  `false` oculta el acceso Novedades del menú móvil.
+
+**Acción en la app:** ninguna para seguir como antes. Si la app oculta el Centro Novedades en
+`DomaNavBar` (`:novelties-center="false"`), pasar lo mismo a su `DomaMobileMenu`.
+
 ## [0.3.6] - 2026-11-18
 
 ### Cambiado
