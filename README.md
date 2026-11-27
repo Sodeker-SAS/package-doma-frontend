@@ -474,6 +474,9 @@ La app lo monta **una sola vez** en su layout móvil; lo abre el botón de `Doma
   `styles/products.css`): su color de identidad, el actual resaltado y los que la empresa no
   tiene apagados con candado.
 - Los colores de los módulos son los del menú lateral del tema (`--vz-vertical-menu-*`).
+- Los grupos del catálogo (y los módulos con sub-ítems) se pintan como desplegables, igual que en
+  el menú lateral de escritorio: su ícono, su nombre y una flecha; al abrir el menú queda
+  desplegado el que contiene la pantalla actual.
 
 #### `DomaMobileAccountMenu`
 
@@ -493,7 +496,9 @@ una barra de color (la de un detalle) va con `variant="topbar"`, translúcida.
   mismos grupos y el mismo módulo activo que el menú lateral. `component` es el componente Inertia
   de la página; `overrides`, los prefijos que no son el PascalCase del código (el
   `MODULE_COMPONENTS` de cada app). `activeModuleCode(modules, component, overrides)` da solo el
-  código del activo.
+  código del activo. Cada sección es `{ key, label, icon, collapsible, active, items }`: los
+  grupos y los módulos con sub-ítems llevan `collapsible: true` y su ícono; `active` indica si
+  contiene la pantalla actual.
 
 #### Conectar una app
 

@@ -41,7 +41,11 @@ const props = defineProps({
     announcements: { type: Array, default: () => [] },
     /** Administrar novedades, solo para quien puede hacerlo. */
     manageUrl: { type: String, default: '' },
-    /** Módulos de la app (`buildMenuSections`): [{ key, label, items: [{ key, label, icon, href, active }] }]. */
+    /**
+     * Módulos de la app (`buildMenuSections`):
+     * [{ key, label, icon?, collapsible?, active?, items: [{ key, label, icon, href, active }] }].
+     * Una sección `collapsible` se pinta como desplegable, igual que en escritorio.
+     */
     sections: { type: Array, default: () => [] },
     /** Con qué se pintan los enlaces a los módulos: `a` o el `Link` de Inertia. */
     linkComponent: { type: [String, Object], default: 'a' },
@@ -55,6 +59,8 @@ const view = ref('main');
 const closeButton = ref(null);
 const detail = ref(null);
 const detailIsNew = ref(false);
+/** Claves de los desplegables abiertos. */
+const expanded = ref(new Set());
 
 const userInitials = computed(() => String(props.user?.name ?? '')
     .split(/\s+/)
@@ -72,16 +78,27 @@ const news = computed(() => productNews(props.announcements, props.currentProduc
     .map((item) => ({ ...item, unseen: isUnseen(item) })));
 const unseenCount = computed(() => news.value.filter((item) => item.unseen).length);
 
-// Al abrir, siempre la vista principal y el foco en «Cerrar el menú».
+// Al abrir, siempre la vista principal, abierto el desplegable de la pantalla
+// actual y el foco en «Cerrar el menú».
 watch(() => props.open, (value) => {
     if (!value) return;
 
     view.value = 'main';
+    expanded.value = new Set(props.sections.filter((section) => section.collapsible && section.active).map((section) => section.key));
     nextTick(() => closeButton.value?.focus());
 });
 
 function close() {
     emit('close');
+}
+
+function toggleSection(key) {
+    const next = new Set(expanded.value);
+
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+
+    expanded.value = next;
 }
 
 function selectTenant(option) {
@@ -165,20 +182,50 @@ function openAnnouncement(item) {
                     <div class="doma-mobile-menu__modules">
                         <span class="doma-mobile-menu__section">Menú</span>
                         <template v-for="section in sections" :key="section.key">
-                            <span v-if="section.label" class="doma-mobile-menu__section">{{ section.label }}</span>
-                            <component
-                                :is="linkComponent"
-                                v-for="item in section.items"
-                                :key="`${section.key}-${item.key}`"
-                                :href="item.href"
-                                class="doma-mobile-menu__module"
-                                :class="{ 'is-active': item.active }"
-                                :aria-current="item.active ? 'page' : null"
-                                @click="close"
-                            >
-                                <i :class="item.icon" aria-hidden="true"></i>
-                                <span>{{ item.label }}</span>
-                            </component>
+                            <template v-if="section.collapsible">
+                                <button
+                                    type="button"
+                                    class="doma-mobile-menu__module doma-mobile-menu__group"
+                                    :class="{ 'is-open': expanded.has(section.key), 'has-active': section.active }"
+                                    :aria-expanded="expanded.has(section.key) ? 'true' : 'false'"
+                                    :aria-controls="`doma-mobile-menu-${section.key}`"
+                                    @click="toggleSection(section.key)"
+                                >
+                                    <i :class="section.icon || 'ri-folder-line'" aria-hidden="true"></i>
+                                    <span>{{ section.label }}</span>
+                                    <i class="ri-arrow-right-s-line doma-mobile-menu__chevron" aria-hidden="true"></i>
+                                </button>
+                                <div v-show="expanded.has(section.key)" :id="`doma-mobile-menu-${section.key}`" class="doma-mobile-menu__group-items">
+                                    <component
+                                        :is="linkComponent"
+                                        v-for="item in section.items"
+                                        :key="`${section.key}-${item.key}`"
+                                        :href="item.href"
+                                        class="doma-mobile-menu__module doma-mobile-menu__sub-module"
+                                        :class="{ 'is-active': item.active }"
+                                        :aria-current="item.active ? 'page' : null"
+                                        @click="close"
+                                    >
+                                        <span>{{ item.label }}</span>
+                                    </component>
+                                </div>
+                            </template>
+                            <template v-else>
+                                <span v-if="section.label" class="doma-mobile-menu__section">{{ section.label }}</span>
+                                <component
+                                    :is="linkComponent"
+                                    v-for="item in section.items"
+                                    :key="`${section.key}-${item.key}`"
+                                    :href="item.href"
+                                    class="doma-mobile-menu__module"
+                                    :class="{ 'is-active': item.active }"
+                                    :aria-current="item.active ? 'page' : null"
+                                    @click="close"
+                                >
+                                    <i :class="item.icon" aria-hidden="true"></i>
+                                    <span>{{ item.label }}</span>
+                                </component>
+                            </template>
                         </template>
                     </div>
 
@@ -473,6 +520,34 @@ button.doma-mobile-menu__tenant {
 .doma-mobile-menu__module.is-active {
     background: var(--doma-primary);
     color: var(--doma-on-primary);
+}
+
+/* Desplegable de un grupo, como `.menu-dropdown` del menú lateral. */
+.doma-mobile-menu__group span {
+    flex: 1;
+}
+
+.doma-mobile-menu__group.has-active {
+    color: var(--doma-primary);
+}
+
+.doma-mobile-menu__chevron {
+    transition: transform 0.2s ease;
+}
+
+.doma-mobile-menu__group.is-open .doma-mobile-menu__chevron {
+    transform: rotate(90deg);
+}
+
+.doma-mobile-menu__group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Sangría hasta el texto del grupo: 12 de relleno + 20 de ícono + 14 de separación. */
+.doma-mobile-menu__sub-module {
+    padding-left: 46px;
 }
 
 /* ---------- Cerrar sesión ---------- */

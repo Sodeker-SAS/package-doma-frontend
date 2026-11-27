@@ -6,13 +6,15 @@
  * Funciones puras, sin Vue ni Inertia: reciben los datos y devuelven lo que
  * pinta `DomaMobileMenu`.
  *
- *   [{ key, label, items: [{ key, label, icon, href, active }] }]
+ *   [{ key, label, icon, collapsible, active, items: [{ key, label, icon, href, active }] }]
  *
- * `label` es el nombre del grupo; los módulos sueltos van en secciones sin
- * rótulo.
+ * Un grupo, o un módulo con sub-ítems, es una sección `collapsible` con su
+ * nombre e ícono: el desplegable del menú de escritorio. `active` dice si tiene
+ * dentro la pantalla actual. Los módulos sueltos van en secciones sin rótulo.
  */
 
 const DEFAULT_MODULE_ICON = 'ri-apps-line';
+const DEFAULT_GROUP_ICON = 'ri-folder-line';
 
 // Comparación de nombres sin distinguir mayúsculas ni tildes.
 function compareLabels(a, b) {
@@ -94,12 +96,28 @@ export function buildMenuSections({ modules = [], groups = [], component = '', o
                 ? children.map((child) => ({ key: child.key, label: child.label, icon: module.icon || DEFAULT_MODULE_ICON, href: child.href, active: false }))
                 : [toItem(module)];
 
-            sections.push({ key: `module-${module.code}`, label: children.length ? module.name : null, sortOrder: module.sortOrder, orderLabel: module.name, items });
+            sections.push({
+                key: `module-${module.code}`,
+                label: children.length ? module.name : null,
+                icon: children.length ? module.icon || DEFAULT_MODULE_ICON : null,
+                collapsible: children.length > 0,
+                sortOrder: module.sortOrder,
+                orderLabel: module.name,
+                items,
+            });
             continue;
         }
 
         if (!grouped.has(group.code)) {
-            const section = { key: `group-${group.code}`, label: group.name, sortOrder: group.sortOrder, orderLabel: group.name, modules: [] };
+            const section = {
+                key: `group-${group.code}`,
+                label: group.name,
+                icon: group.icon || DEFAULT_GROUP_ICON,
+                collapsible: true,
+                sortOrder: group.sortOrder,
+                orderLabel: group.name,
+                modules: [],
+            };
             grouped.set(group.code, section);
             sections.push(section);
         }
@@ -115,5 +133,12 @@ export function buildMenuSections({ modules = [], groups = [], component = '', o
 
     return sections
         .sort((a, b) => bySortOrder(a, b) || compareLabels(a.orderLabel, b.orderLabel))
-        .map(({ key, label, items }) => ({ key, label, items }));
+        .map(({ key, label, icon, collapsible, items }) => ({
+            key,
+            label,
+            icon,
+            collapsible,
+            active: items.some((item) => item.active),
+            items,
+        }));
 }
