@@ -3,6 +3,17 @@
 Cambios de `sodeker/doma-frontend` por versión. Cada entrada indica si la app que actualiza
 necesita alguna acción manual.
 
+## [0.3.8] - 2026-11-27
+
+### Cambiado
+
+- `DomaMobileMenu`: los grupos del menú (y los módulos con sub-ítems) se pintan como desplegables,
+  igual que en el menú lateral de escritorio, en lugar de un título con los módulos sueltos debajo.
+  Al abrir el menú queda desplegado el grupo de la pantalla actual.
+- `buildMenuSections`: cada sección trae además `icon`, `collapsible` y `active`.
+
+**Acción en la app:** ninguna; basta con actualizar el paquete.
+
 ## [0.3.7] - 2026-11-23
 
 ### Añadido
